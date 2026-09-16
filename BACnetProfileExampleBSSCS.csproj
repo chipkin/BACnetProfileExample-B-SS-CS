@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build:
+      dotnet build -c Release
+    Run (from the example folder, after the native library is next to the
+    build output - see README.md "Build the native CAS BACnet Stack library"):
+      dotnet run -c Release [double-dash] port 47821
+
+    Why Release only: the vendored adapter's DllImport filename is
+    "CASBACnetStack_x64_Debug" under #if DEBUG, else "CASBACnetStack_x64_Release"
+    (see common's note in CASExampleHelper.cs and README.md). The stack's own
+    MSVC solution (submodules/cas-bacnet-stack/projects/msvs/BuildCASBACnetStack.sln)
+    only has a DynamicLibrary configuration named "ReleaseDll", which produces
+    exactly CASBACnetStack_x64_Release.dll - there is no matching Debug DLL
+    configuration. So this example is built and run in Release; a Debug build
+    will start but fail to load the native library until you either build a
+    ReleaseDll from the stack or add a DebugDll configuration to its solution.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>BACnetProfileExampleBSSCS</AssemblyName>
+    <RootNamespace>BACnetProfileExampleBSSCS</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The default SDK-style glob (**/*.cs) would otherwise also pick up the whole
+         submodules/cas-bacnet-stack tree - including its own selftest/Program.cs (a second
+         top-level-statements entry point) and unrelated adapters for other languages'
+         selftests. Exclude the submodule tree from the default items, then explicitly
+         include only the three C# adapter files this project actually needs, below. -->
+    <Compile Remove="submodules/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The vendored CAS BACnet Stack C# adapter - direct source inclusion is
+         the established pattern for this adapter (there is no NuGet package);
+         see submodules/cas-bacnet-stack/adapters/csharp/selftest/PropertyBufferHelperSelfTest.csproj
+         for the precedent this follows. PropertyBufferHelper.cs is included
+         for parity with the adapter's expected 3-file set even though this
+         read-only B-SS example never calls a buffer-shaped Send* function
+         (ReadProperty/WriteProperty/CreateObject as a client) - see README.md
+         "Why PropertyBufferHelper.cs is here but unused". -->
+    <Compile Include="submodules/cas-bacnet-stack/adapters/csharp/CASBACnetStackAdapter.cs" />
+    <Compile Include="submodules/cas-bacnet-stack/adapters/csharp/CASBACnetStackAdapterBindings.cs" />
+    <Compile Include="submodules/cas-bacnet-stack/adapters/csharp/PropertyBufferHelper.cs" />
+  </ItemGroup>
+
+</Project>
