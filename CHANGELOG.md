@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - unreleased
+
+### Fixed
+
+- **`Application_Software_Version` (12) and `Firmware_Revision` (44) were
+  hardcoded to `"1.0.0"` and never updated as the example's real version
+  advanced** - the same issue found and fixed in
+  [BACnetProfileExample-B-SCHUB-CPP](https://github.com/chipkin/BACnetProfileExample-B-SCHUB-CPP)
+  v1.1.13 via a real device read with CAS BACnet Explorer.
+  `Application_Software_Version` now returns `APP_VERSION` directly (one
+  source of truth, can't drift from `--version`'s own banner again).
+  `Firmware_Revision` is now built once at start-up, right after
+  `CASExampleHelper.PrintVersion()` makes the first successful native stack
+  call, from the CAS BACnet Stack's own
+  `BACnetStack_GetAPIMajorVersion()`/`GetAPIMinorVersion()`/
+  `GetAPIPatchVersion()`/`GetAPIBuildVersion()` (the same 4 calls
+  `PrintVersion()` already uses for the start-up banner) - it names the
+  underlying platform, not this app. Verified with a real ReadProperty
+  (`bacpypes3`) against the running device:
+  `Application_Software_Version = "1.0.1"`,
+  `Firmware_Revision = "6.0.21.0"`.
+
 ## [1.0.0] - unreleased
 
 ### Added

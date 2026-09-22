@@ -76,7 +76,7 @@ namespace BACnetProfileExampleBSSCS
         // 1. Example + device configuration
         // -------------------------------------------------------------------
         private const string APP_NAME = "BACnet B-SS (Smart Sensor) Example - C#";
-        private const string APP_VERSION = "1.0.0";
+        private const string APP_VERSION = "1.0.1";
 
         // The device instance. BACnet requires this to be configurable, so it
         // defaults to 389001 and can be overridden on the command line with
@@ -121,13 +121,22 @@ namespace BACnetProfileExampleBSSCS
         //   VENDOR_NAME - your company name; it must match VENDOR_IDENTIFIER above.
         //   MODEL_NAME  - your model designation. This is what a building operator
         //                 reads to identify your device in a discovery tool.
-        //   FIRMWARE_REVISION / APPLICATION_SOFTWARE_VERSION - your real
-        //                 versions. Wire them to your build rather than
-        //                 hard-coding a number that will go stale.
+        //   APPLICATION_SOFTWARE_VERSION - this example's own real version;
+        //                 sourced directly from APP_VERSION above, so it can't
+        //                 drift from what --version reports.
+        //   g_firmwareRevision - the underlying CAS BACnet Stack's REAL
+        //                 version (it names the platform underneath this app,
+        //                 not the app itself). Built once at start-up, right
+        //                 after the native library is confirmed loaded - see
+        //                 Main(). Not a compile-time constant because it is
+        //                 read from the stack at runtime via the same
+        //                 BACnetStack_GetAPI*Version() calls
+        //                 CASExampleHelper.PrintVersion() uses for the
+        //                 start-up banner.
         private const string VENDOR_NAME = "Chipkin Automation Systems";
         private const string MODEL_NAME = "CAS BACnet Stack Example - B-SS";
-        private const string FIRMWARE_REVISION = "1.0.0";
-        private const string APPLICATION_SOFTWARE_VERSION = "1.0.0";
+        private const string APPLICATION_SOFTWARE_VERSION = APP_VERSION;
+        private static string g_firmwareRevision = "0.0.0.0";
 
         // The sensor objects (all instance 1) and their colour names.
         private const uint ANALOG_INPUT_INSTANCE = 1;      // "Bronze"
@@ -489,7 +498,7 @@ namespace BACnetProfileExampleBSSCS
                 }
                 if (propertyIdentifier == CASBACnetStackAdapter.PROPERTY_IDENTIFIER_FIRMWAREREVISION)
                 {
-                    return ReturnCharacterString(FIRMWARE_REVISION, value, valueElementCount, maxElementCount, encodingType);
+                    return ReturnCharacterString(g_firmwareRevision, value, valueElementCount, maxElementCount, encodingType);
                 }
                 if (propertyIdentifier == CASBACnetStackAdapter.PROPERTY_IDENTIFIER_APPLICATIONSOFTWAREVERSION)
                 {
@@ -551,6 +560,17 @@ namespace BACnetProfileExampleBSSCS
                     "architecture (this build is x64): " + ex.Message);
                 return 1;
             }
+
+            // The native library is confirmed loaded at this point (PrintVersion()
+            // above made the first successful stack call). Build the Device
+            // object's Firmware_Revision from the stack's own real version - it
+            // reports the underlying CAS BACnet Stack, not this app - using the
+            // same 4 getter calls PrintVersion() already used for the banner.
+            g_firmwareRevision =
+                CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
+                CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
+                CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
+                CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion();
 
             // --- Bind the BACnet/IP socket -------------------------------------
             try
