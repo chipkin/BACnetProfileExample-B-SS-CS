@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - unreleased
+
+Profile-functional (series bar): a faithful port of
+`BACnetProfileExample-B-SS-CPP` 1.3.0 (branch `profile-functional` @ `0743e75`).
+The sensor performs the B-SS Profile Function - ANSI/ASHRAE 135-2024 Annex
+L.4.5, "Ability to provide values for any of its BACnet objects upon request" -
+with readings that change, and shows a Failure Mode. The BACnet Surface is
+unchanged (DS-RP-B, DM-DDB-B, DM-DOB-B; the same five objects).
+
+### Added
+
+- **Sensor Simulation** (`Program.cs` section 2, `SensorSimulationTick()`,
+  labelled Simulation in the README): once a second Analog Input 1 moves 0.5 C
+  between 18.0 and 26.0, Binary Input 1 toggles every 3 s, Multi-State Input 1
+  steps 1 -> 2 -> 3 -> 1 every 4 s. Before, all three were constants (Analog
+  Input 1 changed only on an arrow key).
+- **Analog Input 1 `Reliability`** (optional property, now enabled):
+  `no-fault-detected`, or `open-loop` while the simulated sensor wire is
+  broken; the stack derives the FAULT bit of `Status_Flags` from it (cl. 12.2.7,
+  12.2.9). While broken the reading freezes. Test-only hook: the environment
+  variable `CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` names a file, and the wire is
+  broken while that file exists.
+- **Wire Tests** (`tests/`, copied from the C++ reference) and the shared
+  `wiretest/` 0.7.0 harness, vendored verbatim. `tests/bss_setup.py` adds
+  `launch_command()`: `--exe` defaults to this build's output and may be a
+  command line (e.g. `dotnet <dll>`). Windows, 3 runs in a row: 36/36 checks
+  each (discovery 11/11, sensing 11/11, failure modes 14/14), no `[RETRY]`
+  lines. Mutation-checked: removing the Simulation tick, the wire break, the
+  Reliability branch, the 3 s toggle, or enabling WriteProperty each fails a
+  check.
+- The `.csproj` copies `CASBACnetStack_x64_Release.dll` /
+  `libCASBACnetStack_x64_Release.so` from the submodule's `bin/` into the build
+  output when it has been built.
+
+### Changed
+
+- **Stack Pin** `6.x` @ `ec60c718` -> `6.x` @ `64b2cfac5` (CAS BACnet Stack
+  6.0.23), loaded as the `ReleaseDll` native library through the pin's own
+  `adapters/csharp/` (no source change was needed for the regenerated
+  bindings). **Protocol_Revision 24 -> 30**; segmentation `segmented-both`
+  (`Max_Segments_Accepted` 16, `APDU_Segment_Timeout` 5000 ms), from the stack.
+  Network Port 1's `IP_DNS_Server`, `FD_BBMD_Address` and
+  `FD_Subscription_Lifetime` now read as values (B-SS-CPP #20-#22).
+- `common/` 1.0.0 -> 1.1.0 (see `common/CHANGELOG.md`): the C++ `common/`
+  3.2.0 / 3.4.0 broadcast conventions, `PollKey()` (also reads `q` from a
+  redirected stdin, which is how the Wire Tests stop the example), and the
+  three-line version banner.
+- The up/down keys nudge the simulated Analog Input 1 reading; the Simulation
+  carries on from the new value.
+- README: the scenario, the Simulation, Wire Tests, the version line; TUTORIAL:
+  replacing the Simulation with hardware and reporting a sensor fault; PICS:
+  Reliability row, segmentation, Protocol_Revision 30, Application_Software_Version
+  1.1.0. APP_VERSION 1.0.2 -> 1.1.0.
+
 ## [1.0.2] - unreleased
 
 ### Changed

@@ -3,6 +3,33 @@
 All notable changes to the vendored C# `common/` helpers. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-10-16
+
+Brings the C# edition up to the C++ `common/` 3.4.0 conventions that a
+single-port example uses.
+
+### Added
+
+- `PollKey()` / `KeyCommand` (`None`, `Help`, `Quit`, `ArrowUp`,
+  `ArrowDown`), `PrintHelp()` and `PrintInteractiveCommands()` - the C++
+  edition's names. On a real console `PollKey()` reads `Console.ReadKey`; on a
+  redirected stdin it reads characters on a background thread and passes `q` /
+  `h` on, so a harness that writes `q` to the example's stdin (the series'
+  `wiretest/`) stops it cleanly.
+- `SimpleUDP.Port` - the UDP port the socket is bound to.
+
+### Changed
+
+- The send callback sends a frame with a NULL / length-0 connection string
+  (the stack's "broadcast on this data link") to the local subnet broadcast on
+  the bound port, instead of dropping it (C++ `common/` 3.2.0); and a
+  broadcast addressed to this socket's own address and port to the local
+  subnet broadcast, instead of unicasting it to itself (C++ `common/` 3.4.0,
+  stack issue #3933). A connection string of 1-5 octets is still refused.
+- `PrintVersion()` prints `CAS BACnet Stack version: X.Y.Z.W` and a third
+  line, `Common helper (common/) version: <COMMON_VERSION>`, as the C++ edition
+  does. `--help` prints the version banner and the key list.
+
 ## [1.0.0] - 2026-09-16
 
 ### Added

@@ -20,9 +20,26 @@ mistake in this example is silent, and the section it lives in is
 
 The example is intentionally small so it's easy to change.
 
-**Change a sensor's value or name** - edit the constants / callbacks in
-`Program.cs` (e.g. `g_analogInput1Value`, or the `"Bronze"` string in
-`GetPropertyCharacterString`).
+**Change a sensor's name** - edit the `"Bronze"` (etc.) string in
+`GetPropertyCharacterString`.
+
+**Replace the sensor Simulation with hardware** - `Program.cs` §2
+(`SensorSimulationTick()`) is the only code that changes the readings
+(`g_analogInput1Value`, `g_binaryInput1Value`, `g_multiStateInput1Value`); the
+§3 callbacks only hand them back. Replace it with your own sampling on a timer
+or another thread - never read slow I/O (I2C, SPI, an ADC conversion) from a
+callback, which runs inside `BACnetStack_Tick()`. Delete the
+`CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` hook with it: it is a test-only stand-in
+for a broken wire.
+
+**Report a sensor fault** - set `g_analogInput1Reliability` from your
+hardware's own diagnostics (`RELIABILITY_OPEN_LOOP` for a broken wire, or
+another BACnetReliability value: `shorted-loop` 5, `no-sensor` 6,
+`over-range` 2, ...). The stack derives the FAULT bit of `Status_Flags` from
+`Reliability` by itself (cl. 12.2.7) - but only while the `Reliability` branch
+of `GetPropertyEnumerated` answers: if it declines, the stack silently
+substitutes no-fault-detected and the sensor reports itself healthy forever.
+The Wire Test `tests/failure_modes_test.py` catches exactly that.
 
 **Change the device identity before you ship** - vendor ID, vendor name,
 model name, description, firmware revision and device name are all in the
@@ -211,21 +228,20 @@ a richer profile - see the series table in [README.md](README.md).
 ## Interactive keys are a simplification
 
 The C++ edition polls raw console keys (including arrow-key escape sequences)
-every millisecond in its own `while` loop. The Node edition sets stdin raw
-mode via `readline.emitKeypressEvents`. This C# edition uses .NET's built-in
-non-blocking `Console.KeyAvailable` + `Console.ReadKey(true)`, which .NET
-already decodes into a `ConsoleKey` enum (`ConsoleKey.UpArrow`, etc.) without
-any manual escape-sequence parsing - genuinely simpler here, not a cut corner.
+every millisecond in its own `while` loop. This C# edition's
+`CASExampleHelper.PollKey()` uses .NET's built-in non-blocking
+`Console.KeyAvailable` + `Console.ReadKey(true)`, which .NET already decodes
+into a `ConsoleKey` enum (`ConsoleKey.UpArrow`, etc.) without any manual
+escape-sequence parsing - genuinely simpler here, not a cut corner.
 
-The one thing this approach cannot do is read keys when stdin is **not** a
-real, non-redirected console (a background process, a CI smoke test, output
-piped to a file): `Console.KeyAvailable` throws `InvalidOperationException`
-in that case. `Program.cs` checks `Console.IsInputRedirected` once at start-up
-and skips key polling entirely when it is true - the device still runs
-(`BACnetStack_Tick()` keeps ticking, and Ctrl+C or `SIGTERM` still work via
-`Console.CancelKeyPress`), it just cannot be nudged from the keyboard. This
-mirrors the Node edition's `process.stdin.isTTY` check and the CI smoke test
-in `.github/workflows/release.yml`, which never touches the keyboard.
+When stdin is **not** a real console (a pipe, a background process, the Wire
+Tests' harness), `Console.KeyAvailable` would throw
+`InvalidOperationException`, so `PollKey()` checks `Console.IsInputRedirected`
+first. On a redirected stdin it reads characters on a background thread
+instead (a pipe has no non-blocking "is a key waiting" check) and passes `q`
+and `h` to the main loop; a pipe carries no arrow keys. That is how the Wire
+Tests stop the example: they write `q` to its stdin. Ctrl+C or `SIGTERM` still
+work everywhere via `Console.CancelKeyPress`.
 
 ## Reviewing your device
 
@@ -276,7 +292,8 @@ defect, not a feature.
 | `DllNotFoundException: Unable to load DLL 'CASBACnetStack_x64_Release'` | The native library is missing from the build output directory. See README.md [Build the native CAS BACnet Stack library](README.md#build-the-native-cas-bacnet-stack-library) - it is a separate step from `dotnet build`, and must land next to `BACnetProfileExampleBSSCS.dll`/`.exe`. |
 | `DllNotFoundException` mentioning `CASBACnetStack_x64_Debug` | You built/ran in `Debug` configuration. The stack's MSVC solution only ships a `ReleaseDll` configuration - see README.md [Why only a Release build](README.md#why-only-a-release-build). Build and run with `-c Release`. |
 | `BadImageFormatException` | The native library's architecture does not match this process. This example targets `x64` (`<PlatformTarget>x64</PlatformTarget>`) - make sure the DLL/.so you built is also x64. |
-| `System.InvalidOperationException` from `Console.KeyAvailable` | Should not happen - `Program.cs` checks `Console.IsInputRedirected` first and skips key polling when true. If you see this after a local edit, you likely removed that check; see [Interactive keys are a simplification](#interactive-keys-are-a-simplification). |
+| `System.InvalidOperationException` from `Console.KeyAvailable` | Should not happen - `CASExampleHelper.PollKey()` checks `Console.IsInputRedirected` first and reads a redirected stdin on a background thread instead. If you see this after a local edit, you likely removed that check; see [Interactive keys are a simplification](#interactive-keys-are-a-simplification). |
+| Analog Input 1 `Reliability` reads `open-loop` and the reading is frozen | The test-only broken-wire hook is active: the environment variable `CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` names a file that exists. Unset the variable or delete the file. |
 | App prints *"could not bind UDP port 47808"* | Another BACnet program is already using 47808. Stop it, or run with `--port <n>`. |
 | Client sends Who-Is but sees no I-Am | Firewall is blocking UDP 47808, or the client and device are on different subnets (Who-Is is a broadcast). Allow the port; test on the same subnet first. |
 | A WriteProperty you sent is rejected | Correct behaviour - this device is read-only. There is no `RegisterCallbackSetProperty*` call anywhere in `Program.cs`; the stack declines every write without consulting the application. |

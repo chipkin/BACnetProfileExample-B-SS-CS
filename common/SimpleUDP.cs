@@ -45,6 +45,9 @@ namespace BACnetProfileExampleBSSCS.Common
     {
         private Socket socket;
 
+        /// <summary>The UDP port this socket is bound to (0 before Setup).</summary>
+        public int Port { get; private set; }
+
         /// <summary>
         /// Bind the socket. Throws SocketException on bind failure (for example:
         /// another BACnet device already owns the port exclusively).
@@ -55,6 +58,7 @@ namespace BACnetProfileExampleBSSCS.Common
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             socket.EnableBroadcast = true;
             socket.Bind(new IPEndPoint(IPAddress.Any, port));
+            Port = port;
         }
 
         /// <summary>The next queued inbound datagram, or false if none arrived.</summary>

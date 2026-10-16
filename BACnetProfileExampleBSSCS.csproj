@@ -54,4 +54,17 @@
     <Compile Include="submodules/cas-bacnet-stack/adapters/csharp/PropertyBufferHelper.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The native CAS BACnet Stack library the adapter P/Invokes, copied next to the build
+         output when it has been built (README "Build the native CAS BACnet Stack library":
+         projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj, ReleaseDll|x64, writes it to the
+         submodule's bin/). Absent = nothing copied; copy it by hand as before. -->
+    <None Include="submodules/cas-bacnet-stack/bin/CASBACnetStack_x64_Release.dll"
+          Condition="Exists('submodules/cas-bacnet-stack/bin/CASBACnetStack_x64_Release.dll')"
+          Link="CASBACnetStack_x64_Release.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so"
+          Condition="Exists('submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so')"
+          Link="libCASBACnetStack_x64_Release.so" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
 </Project>

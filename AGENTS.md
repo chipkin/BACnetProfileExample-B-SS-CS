@@ -8,7 +8,13 @@ Guidance for AI coding agents working in this repository. See
 
 A **tutorial** C#/.NET example that implements the BACnet **B-SS** (Smart
 Sensor) profile using the CAS BACnet Stack's C# P/Invoke adapter: a complete
-minimal, **read-only** BACnet/IP device (DS-RP-B, DM-DDB-B, DM-DOB-B). Part of
+minimal, **read-only** BACnet/IP device (DS-RP-B, DM-DDB-B, DM-DOB-B) whose
+readings follow a sensor **Simulation**, with one Failure Mode (a broken
+sensor wire -> Reliability `open-loop`, Status_Flags FAULT). It is a
+**faithful port** of `BACnetProfileExample-B-SS-CPP` (branch
+`profile-functional`): a change to the device's behaviour belongs in the C++
+reference first, then here, and the Wire Tests in `tests/` (copied from the
+reference) must not be able to tell the two apart. Part of
 the BACnet profile example series, and the **first C# example** in it - the
 C++ sibling is `BACnetProfileExample-B-SS-CPP` and the Node sibling is
 `BACnetProfileExample-B-SS-Node`; this example keeps the same objects, names,
@@ -21,9 +27,16 @@ copy-paste. Favour clarity over cleverness.
 
 This repository is self-contained:
 
-- `Program.cs` - the whole application, three numbered sections (§1
-  configuration, §2 get callbacks, §3 main). There is no §2b/§2c - a B-SS
-  registers no `Set*` callback and no `DeviceCommunicationControl` handler.
+- `Program.cs` - the whole application, four numbered sections (§1
+  configuration, §2 the sensor Simulation, §3 get callbacks, §4 main), the
+  same layout as the C++ reference's `main.cpp`. A B-SS registers no `Set*`
+  callback and no `DeviceCommunicationControl` handler.
+- `tests/` - the Wire Tests, copied from the C++ reference. The one local
+  change is in `tests/bss_setup.py` (`default_command()`, `launch_command()`,
+  `start()`): the default `--exe` is this build's output, and `--exe` may be a
+  command line. Keep the scripts otherwise identical to the reference.
+- `wiretest/` - the series' Wiretest Harness (0.7.0), vendored verbatim. Never
+  edit it here; report a needed change instead.
 - `common/` - the shared C# helper (SimpleUDP, CASExampleHelper, constants),
   vendored in. Never edit here alone: once a second C# example exists, a
   change must be swept to it too and `COMMON_VERSION` bumped with a
@@ -57,9 +70,11 @@ dotnet build -c Release                   # compiles this example + the vendored
 
 `dotnet build` does **not** build the native CAS BACnet Stack library the
 adapter P/Invokes into - that is a separate native C++ build (MSBuild on
-Windows against `submodules/cas-bacnet-stack/projects/msvs/BuildCASBACnetStack.sln`
-`/p:Configuration=ReleaseDll /p:Platform=x64`; g++ on Linux). See README.md
-for the exact commands. Do not try to fold that into the `.csproj` as a
+Windows against `submodules/cas-bacnet-stack/projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj`
+`/p:Configuration=ReleaseDll /p:Platform=x64` - a customer-interface build,
+never `DebugTestTool`; g++ on Linux). See README.md for the exact commands.
+The `.csproj` copies the built library from the submodule's `bin/` into the
+build output when it exists there. Do not try to fold that into the `.csproj` as a
 pre-build target unless you also make it a no-op when the DLL/.so is already
 present - re-running the native build on every `dotnet build` would make the
 inner loop painfully slow.
@@ -77,9 +92,11 @@ dotnet run -c Release -- --port 47821 --deviceID 12345   # run
 dotnet build -c Release                                   # compile-check (no separate typecheck step in .NET)
 ```
 
-Interactive keys while running (only when stdin is a real console - see
-TUTORIAL.md "Interactive keys are a simplification"): `h` help, `q` quit,
-up/down nudge Analog Input 1.
+Interactive keys while running: `h` help, `q` quit, up/down nudge the
+simulated Analog Input 1 (arrows only on a real console; `q` and `h` also work
+on a redirected stdin - see TUTORIAL.md "Interactive keys are a
+simplification"). Test-only hook: `CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` names a
+file; while it exists the simulated sensor wire is broken.
 
 ## Conventions
 
@@ -132,16 +149,20 @@ up/down nudge Analog Input 1.
 
 ## How to verify a change
 
-There are no unit tests; verification is behavioural:
+Verification is behavioural, over the wire:
 
 1. `dotnet build -c Release` with 0 warnings, 0 errors.
-2. Smoke: with the native library built and copied next to the output (see
+2. **Wire Tests**: `python tests/run_wire_tests.py --port <free port>` ends with
+   `ALL WIRE TESTS PASSED` (36 checks). Any `[RETRY]` line is a lost UDP
+   datagram that was resent - note it, do not hide it. A behavioural change
+   needs a check that fails without it (README "Wire Tests", tests/README.md).
+3. Smoke: with the native library built and copied next to the output (see
    README.md), `dotnet run -c Release -- --port 47821` stays up past the
    ready banner (every failed setup call exits 1, so "still running" proves
    registration).
-3. Read back what you changed with a BACnet client (Who-Is, ReadProperty of
+4. Read back what you changed with a BACnet client (Who-Is, ReadProperty of
    every required property; confirm a WriteProperty is rejected).
-4. If you changed the objects or their properties, regenerate
+5. If you changed the objects or their properties, regenerate
    `docs/PICS.md` (`python tools/gen-objects-properties.py
    BACnetProfileExample-B-SS-CS` from the series root) and confirm no row
    comes out flagged with ⚠.

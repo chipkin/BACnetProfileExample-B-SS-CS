@@ -4,7 +4,14 @@ A minimal, copy-paste-friendly example showing how to implement the BACnet
 **B-SS (Smart Sensor)** device profile in C# / .NET, using the
 [CAS BACnet Stack](https://store.chipkin.com/services/stacks/bacnet-stack). It
 listens on **BACnet/IP (UDP 47808)**, answers **ReadProperty**, and is
-discoverable via **Who-Is / I-Am**.
+discoverable via **Who-Is / I-Am**. Its readings follow a sensor
+**Simulation** (labelled below), and it reports a broken sensor the BACnet way.
+
+This is a faithful C# port of the reworked
+[BACnetProfileExample-B-SS-CPP](https://github.com/chipkin/BACnetProfileExample-B-SS-CPP)
+(v1.3.0): the same Device, objects, properties, Simulation, Failure Modes,
+test-only hook and command-line options, proven by the same
+[Wire Tests](#wire-tests), which cannot tell the two apart on the wire.
 
 This is the **first C# example** in the BACnet profile example series. There
 is no prior C# example repo to copy structurally - this one was built from the
@@ -17,11 +24,13 @@ vendored C# adapter, not an embedded C++ link or a Node N-API addon.
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.0.0**, built and verified
-> against the CAS BACnet Stack submodule pinned at `6.x`, at
-> **Protocol_Revision 24**, with the vendored C# `common/` helper at
-> **v1.0.0**. Running the example prints the app and API versions - if what it
-> prints disagrees with this line, trust the program and check `CHANGELOG.md`.
+> **Versions:** this document describes **example v1.1.0**, built and verified
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`, loaded as the
+> `ReleaseDll` native library through the stack's own `adapters/csharp/`), at
+> **Protocol_Revision 30**, with the vendored C# `common/` helper at **v1.1.0**
+> and `wiretest/` at **0.7.0**. Running the example prints all three versions -
+> if what it prints disagrees with this line, trust the program and check
+> `CHANGELOG.md`.
 
 ## What is the B-SS (Smart Sensor) profile?
 
@@ -43,7 +52,7 @@ must expose all of its **required properties**. The CAS BACnet Stack
 generates most of those automatically (Object_Identifier, Object_Type,
 Status_Flags, Object_List, Protocol_*, ...); this example supplies the
 handful that are application-specific. The result is conformant for
-**Protocol_Revision 24**. [docs/PICS.md](docs/PICS.md) lists every property
+**Protocol_Revision 30**. [docs/PICS.md](docs/PICS.md) lists every property
 and who answers it.
 
 ## The device this example creates
@@ -51,11 +60,55 @@ and who answers it.
 ```
 Device 389001  "Chipkin Example B-SS"   (Vendor 389 - Chipkin Automation Systems)
     │
-    ├── Analog Input 1       "Bronze"      Present_Value  21.5     (REAL, degrees Celsius; read-only)
-    ├── Binary Input 1       "Emerald"     Present_Value  inactive (read-only)
-    ├── Multi-State Input 1  "Hot Pink"    Present_Value  1        (state 1..3; read-only)
+    ├── Analog Input 1       "Bronze"      Present_Value  21.5 -> ramps 18.0 .. 26.0  (REAL, degrees Celsius)
+    ├── Binary Input 1       "Emerald"     Present_Value  toggles every 3 s     (0 = inactive / 1 = active)
+    ├── Multi-State Input 1  "Hot Pink"    Present_Value  1 -> 2 -> 3 every 4 s (state, 1..3)
     └── Network Port 1       "Vermilion"   the BACnet/IP port     (required on every device)
 ```
+
+## The scenario: a sensor a controller reads
+
+What a B-SS is for, in one sentence, from Annex L.4.5 of ANSI/ASHRAE 135-2024:
+*"Ability to provide values for any of its BACnet objects upon request."* A
+controller or workstation (the **Peer** - any BACnet client, or the Python
+client in [`tests/`](tests/README.md)) reads the sensor and gets what it is
+measuring **now**:
+
+1. The Peer finds the sensor with **Who-Is** and reads its `Object_List`.
+2. It reads Analog Input 1 `Present_Value` - say `22.0` - and again a few
+   seconds later - `23.5`. The reading follows the (simulated) room temperature,
+   0.5 C a second. Binary Input 1 and Multi-State Input 1 change too.
+3. **Failure Mode - a broken sensor.** When the sensor wire breaks, Analog
+   Input 1 `Reliability` reads `open-loop` (4) and the **FAULT** bit of
+   `Status_Flags` is TRUE (clause 12.2.7 derives FAULT from Reliability). The
+   reading stops changing. Repair the wire and `Reliability` returns to
+   `no-fault-detected`, FAULT clears, and the reading moves again.
+4. **Failure Mode - a request it cannot serve.** Reading an object or property
+   the sensor does not have, or an array element past the end, gets the error
+   clause 15.5.1.3.1 names (`unknown-object`, `unknown-property`,
+   `invalid-array-index`); a WriteProperty gets a **Reject**
+   `unrecognized-service`, because a B-SS is read-only.
+
+### The sensor Simulation
+
+A real smart sensor samples a thermistor, a contact and a selector switch. This
+example has none of them, so it **simulates** them - non-BACnet scaffolding,
+outside the BACnet Surface, in section 2 of [`Program.cs`](Program.cs)
+(`SensorSimulationTick()`, called beside `BACnetStack_Tick()`). Once a second:
+
+- the **temperature** (Analog Input 1) moves 0.5 C, ramping up to 26.0 and back
+  down to 18.0;
+- the **contact** (Binary Input 1) toggles every 3 s;
+- the **selector** (Multi-State Input 1) steps 1 -> 2 -> 3 -> 1 every 4 s.
+
+The **broken wire** is a test-only hook, not a feature: if the environment
+variable `CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` names a file, the wire counts as
+broken for as long as that file exists. The Wire Tests create and delete it.
+Nothing on the network can break the sensor.
+
+To port the example to hardware, replace `SensorSimulationTick()` with your own
+sampling (on a timer or another thread - never block the BACnet callbacks on
+slow I/O), and set `Reliability` from your hardware's own diagnostics.
 
 ## What this example supports
 
@@ -111,8 +164,11 @@ sales@chipkin.com.
 
 This is a **self-contained** project. It ships:
 
-- `Program.cs` - the example device.
-- `common/` - the shared C# helper (UDP, callbacks, CLI) vendored in.
+- `Program.cs` - the example device (section 2 is the sensor Simulation).
+- `common/` - the shared C# helper (UDP, callbacks, CLI, keys) vendored in.
+- `tests/` - the Wire Tests ([tests/README.md](tests/README.md)), copied from
+  the C++ edition; `wiretest/` - the series' shared Wiretest Harness 0.7.0,
+  vendored verbatim.
 - `BACnetProfileExampleBSSCS.csproj` - the .NET build (`net8.0`), the same on
   Windows and Linux.
 - `docs/PICS.md` - the conformance statement.
@@ -125,10 +181,12 @@ This is a **self-contained** project. It ships:
 
 ## Prerequisites
 
-- **.NET 8 SDK** (`dotnet --version` should report `8.x` or later).
+- **.NET 8 SDK or later** (verified with SDK 10.0.402 building `net8.0`) and
+  the .NET 8 runtime.
+- **Python 3** (standard library only) to run the Wire Tests.
 - Git (to fetch the stack submodule).
 - **To build the native library** (see below): on Windows, Visual Studio 2022
-  Build Tools (MSBuild) targeting the stack's `projects/msvs/BuildCASBACnetStack.sln`;
+  Build Tools (MSBuild) building the stack's `projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj`;
   on Linux, a C++17 toolchain (g++/clang++).
 
 ## Build
@@ -156,16 +214,21 @@ The C# adapter's P/Invoke declarations resolve
 at run time - there is no bundled copy and no NuGet package. Build it once
 from the stack submodule, then copy it next to this project's build output.
 
-**Windows** - the stack's MSVC solution has a `ReleaseDll|x64` configuration
-that builds exactly this DLL, under exactly this name:
+**Windows** - the stack's MSVC project has a `ReleaseDll|x64` configuration
+that builds exactly this DLL, under exactly this name (a customer-interface
+build: no test-tool exports):
 
 ```powershell
-& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" `
-  submodules\cas-bacnet-stack\projects\msvs\BuildCASBACnetStack.sln `
+& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
+  submodules\cas-bacnet-stack\projects\msvs\CASBACnetStack\CASBACnetStack.vcxproj `
   /p:Configuration=ReleaseDll /p:Platform=x64
 
-copy submodules\cas-bacnet-stack\bin\CASBACnetStack_x64_Release.dll bin\Release\net8.0\
+dotnet build -c Release   # copies submodules\cas-bacnet-stack\bin\CASBACnetStack_x64_Release.dll next to the .exe
 ```
+
+The `.csproj` copies the DLL (or `libCASBACnetStack_x64_Release.so`) from the
+submodule's `bin/` into the build output whenever it exists there, so build the
+native library first and `dotnet build` second.
 
 (Adjust the MSBuild path to your Visual Studio / Build Tools install; `vswhere`
 or the "Developer Command Prompt for VS 2022" both resolve it for you if you
@@ -220,8 +283,9 @@ dotnet run -c Release -- --port 47821 --deviceID 12345
 Expected output:
 
 ```
-BACnet B-SS (Smart Sensor) Example - C# v1.0.0
-CAS BACnet Stack v6.0.21.0
+BACnet B-SS (Smart Sensor) Example - C# v1.1.0
+CAS BACnet Stack version: 6.0.23.0
+Common helper (common/) version: 1.1.0
 FYI: listening on <your-ip>:47808 (broadcast <your-subnet-broadcast>)
 FYI: Device 389001 ("Chipkin Example B-SS") ready. Vendor ID 389. Press 'h' for help.
 ```
@@ -248,12 +312,13 @@ means), these keys are available:
 |-----|--------|
 | `h` | Show the version information and this command list. |
 | `q` | Quit. |
-| up arrow | Increase Analog Input 1 (`Bronze`) by 1.1. |
-| down arrow | Decrease Analog Input 1 (`Bronze`) by 1.1. |
+| up arrow | Nudge the simulated Analog Input 1 (`Bronze`) reading up by 1.1. |
+| down arrow | Nudge the simulated Analog Input 1 (`Bronze`) reading down by 1.1. |
 
-The up/down keys change the live `Present_Value` of the analog input, so a
-client re-reading it sees the new value. Ctrl+C also shuts the device down
-cleanly (an interactive console is not required for that).
+The up/down keys move the simulated temperature; the Simulation carries on
+ramping from the new value, and a client re-reading it sees the change. Ctrl+C
+also shuts the device down cleanly. With stdin redirected (a pipe, as the Wire
+Tests run it) the arrows do not exist, but a `q` written to stdin still quits.
 
 ## Verify
 
@@ -267,11 +332,13 @@ Use a BACnet client such as the
    (`Chipkin Example B-SS`), the three sensors, and the Network Port (`Vermilion`). Reading
    the Device's `Object_List` returns all five.
 3. **Read the Device** - ReadProperty `389001` -> `Object_Name` returns
-   `"Chipkin Example B-SS"`; `Protocol_Revision` returns `24`; `Description` returns the
+   `"Chipkin Example B-SS"`; `Protocol_Revision` returns `30`; `Description` returns the
    profile description string.
-4. **Read a sensor** - ReadProperty Analog Input `1` -> `Present_Value`
-   returns `21.5`; `Units` returns `degrees-Celsius`; `Out_Of_Service` returns
-   `false`; `Object_Name` returns `"Bronze"`. Repeat for Binary Input `1`
+4. **Read a sensor** - ReadProperty Analog Input `1` -> `Present_Value` returns
+   the current simulated temperature (`21.5` at start-up, then 0.5 higher each
+   second); read it again and it has moved. `Units` returns `degrees-Celsius`;
+   `Reliability` returns `no-fault-detected`; `Status_Flags` returns all FALSE;
+   `Out_Of_Service` returns `false`; `Object_Name` returns `"Bronze"`. Repeat for Binary Input `1`
    (`"Emerald"`, has `Polarity`) and Multi-State Input `1` (`"Hot Pink"`, has
    `Number_Of_States` = 3). Every required property of every object is
    readable.
@@ -280,6 +347,33 @@ Use a BACnet client such as the
 
 For a property-by-property review against the conformance statement, see
 [TUTORIAL.md](TUTORIAL.md).
+
+## Wire Tests
+
+The checks above, automated: a Python BACnet client (the Peer) drives the running
+example over BACnet/IP from outside it. Python 3 standard library only. The
+scripts are the C++ edition's `tests/`, unchanged except for one addition in
+`tests/bss_setup.py`: `--exe` may be a whole command line (split with `shlex`),
+so the example can also be started as `dotnet <dll>`.
+
+| Script | What it proves |
+|---|---|
+| `discovery_test.py` | Who-Is, the Device's `Object_List`, then for every object its `Property_List` and a ReadProperty of every property it lists - every read comes back as a value. |
+| `sensing_test.py` | **The Profile Function.** Reads the three sensors again and again for 12 s; the readings follow the Simulation (0.5 C steps, a toggle every 3 s, states in order). Fails against a sensor that serves constants. |
+| `failure_modes_test.py` | **The Failure Modes.** Breaks the simulated sensor wire: `Reliability` `open-loop`, `Status_Flags` FAULT, a frozen reading; repairs it: all clear, the reading moves. Then the errors for an unknown object / property / array index, and the Reject for a WriteProperty. |
+
+Run them all (after `dotnet build -c Release`, with the native library in the
+build output):
+
+```bash
+python tests/run_wire_tests.py                     # default --exe bin/Release/net8.0/BACnetProfileExampleBSSCS(.exe)
+python tests/run_wire_tests.py --port 47821 --exe "dotnet bin/Release/net8.0/BACnetProfileExampleBSSCS.dll"
+```
+
+It ends with `ALL WIRE TESTS PASSED` (exit 0); about 25 seconds.
+[tests/README.md](tests/README.md) says what each check proves. **Verified on
+Windows only** (3 runs in a row, 36/36 checks each, no `[RETRY]` lines); the
+port has not been run on Linux.
 
 ## How the C# binding differs from the C++/Node editions
 

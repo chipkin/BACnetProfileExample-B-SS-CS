@@ -51,7 +51,7 @@ namespace BACnetProfileExampleBSSCS.Common
         // The version of the vendored common/ helper itself (NOT the example's
         // version). Bump it whenever anything in common/ changes, and record the
         // change in common/CHANGELOG.md.
-        public const string COMMON_VERSION = "1.0.0";
+        public const string COMMON_VERSION = "1.1.0";
 
         // The delegate instances passed to BACnetStack_RegisterCallback* must be
         // kept alive for as long as the native stack may call them - a local
@@ -171,17 +171,42 @@ namespace BACnetProfileExampleBSSCS.Common
             };
             CASBACnetStackAdapter.BACnetStack_RegisterCallbackReceiveMessageForPort(receiveDelegate);
 
+            // A NULL / length-0 connection string is the stack saying "broadcast on
+            // this data link" (BACnetStack_RegisterCallbackSendMessageForPort's
+            // contract in CASBACnetStackDLL.h): send it to the local subnet
+            // broadcast on this socket's port (C++ common/ 3.2.0). A broadcast
+            // addressed to THIS socket's own address means "this subnet" too - the
+            // stack copies its own looped-back I-Am address for a Device_Address_Binding
+            // Who-Is (stack issue #3933) - so it also goes to the local subnet
+            // broadcast (C++ common/ 3.4.0). Every other address is sent to as given.
+            // A connection string of 1-5 octets is not a BACnet/IP address: refused.
+            int boundPort = udp.Port;
+            LocalIPv4 local = GetLocalIPv4(); // read once, not on every send
             sendDelegate = (byte* message, ushort messageLength,
                              byte* connectionString, byte connectionStringLength,
                              uint sendNetworkPortInstance, bool broadcast) =>
             {
-                if (connectionStringLength < 6)
+                string toIp;
+                int toPort;
+                if (connectionString == null || connectionStringLength == 0)
+                {
+                    toIp = local.Broadcast;
+                    toPort = boundPort;
+                }
+                else if (connectionStringLength < 6)
                 {
                     return (ushort)0;
                 }
-                string toIp = connectionString[0] + "." + connectionString[1] + "." +
-                              connectionString[2] + "." + connectionString[3];
-                int toPort = (connectionString[4] << 8) | connectionString[5];
+                else
+                {
+                    toIp = connectionString[0] + "." + connectionString[1] + "." +
+                           connectionString[2] + "." + connectionString[3];
+                    toPort = (connectionString[4] << 8) | connectionString[5];
+                    if (broadcast && toPort == boundPort && toIp == local.Address)
+                    {
+                        toIp = local.Broadcast;
+                    }
+                }
                 byte[] buffer = new byte[messageLength];
                 Marshal.Copy((IntPtr)message, buffer, 0, messageLength);
                 udp.Send(buffer, toIp, toPort);
@@ -234,11 +259,91 @@ namespace BACnetProfileExampleBSSCS.Common
         public static void PrintVersion(string appName, string appVersion)
         {
             Console.WriteLine(appName + " v" + appVersion);
-            Console.WriteLine("CAS BACnet Stack v" +
+            Console.WriteLine("CAS BACnet Stack version: " +
                 CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
                 CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
                 CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
                 CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion());
+            // The vendored common/ helper has its own version (common/CHANGELOG.md)
+            // so it is easy to tell whether this example's copy is stale.
+            Console.WriteLine("Common helper (common/) version: " + COMMON_VERSION);
+        }
+
+        /// <summary>The interactive key list (the 'h' key and --help both print it).</summary>
+        public static void PrintInteractiveCommands()
+        {
+            Console.WriteLine("Commands:");
+            Console.WriteLine("  h     - show this help (version + commands)");
+            Console.WriteLine("  q     - quit");
+            Console.WriteLine("  up    - increase Analog Input 1 by 1.1");
+            Console.WriteLine("  down  - decrease Analog Input 1 by 1.1");
+        }
+
+        /// <summary>The 'h' key: version banner, then the key list.</summary>
+        public static void PrintHelp(string appName, string appVersion)
+        {
+            PrintVersion(appName, appVersion);
+            PrintInteractiveCommands();
+        }
+
+        // ---------------------------------------------------------------------
+        // Interactive keys
+        // ---------------------------------------------------------------------
+
+        public enum KeyCommand { None, Help, Quit, ArrowUp, ArrowDown }
+
+        // Keys typed on a redirected stdin (a pipe - how the Wire Tests' harness
+        // stops an example, by writing 'q'). Read on a background thread, because
+        // a pipe has no non-blocking "is a key waiting" check; the main loop only
+        // ever reads this queue. A real console uses Console.KeyAvailable instead.
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<KeyCommand> pipedKeys =
+            new System.Collections.Concurrent.ConcurrentQueue<KeyCommand>();
+        private static System.Threading.Thread pipedKeyReader;
+
+        /// <summary>
+        /// The key pressed since the last call, or KeyCommand.None - never blocks.
+        /// Same keys as the C++ common/ PollKey(): h, q, up/down arrows. On a
+        /// redirected stdin only the letter keys exist (a pipe carries no arrows).
+        /// </summary>
+        public static KeyCommand PollKey()
+        {
+            if (!Console.IsInputRedirected)
+            {
+                if (!Console.KeyAvailable)
+                {
+                    return KeyCommand.None;
+                }
+                ConsoleKeyInfo key = Console.ReadKey(true);
+                switch (key.Key)
+                {
+                    case ConsoleKey.H: return KeyCommand.Help;
+                    case ConsoleKey.Q: return KeyCommand.Quit;
+                    case ConsoleKey.UpArrow: return KeyCommand.ArrowUp;
+                    case ConsoleKey.DownArrow: return KeyCommand.ArrowDown;
+                    default: return KeyCommand.None;
+                }
+            }
+            if (pipedKeyReader == null)
+            {
+                pipedKeyReader = new System.Threading.Thread(() =>
+                {
+                    int character;
+                    while ((character = Console.In.Read()) >= 0)
+                    {
+                        if (character == 'q' || character == 'Q')
+                        {
+                            pipedKeys.Enqueue(KeyCommand.Quit);
+                        }
+                        else if (character == 'h' || character == 'H')
+                        {
+                            pipedKeys.Enqueue(KeyCommand.Help);
+                        }
+                    }
+                });
+                pipedKeyReader.IsBackground = true; // never keeps the process alive on exit
+                pipedKeyReader.Start();
+            }
+            return pipedKeys.TryDequeue(out KeyCommand pipedKey) ? pipedKey : KeyCommand.None;
         }
 
         /// <summary>Prints help/version and returns true if the caller should exit.</summary>
@@ -248,12 +353,15 @@ namespace BACnetProfileExampleBSSCS.Common
             {
                 if (arg == "--help" || arg == "-h")
                 {
-                    Console.WriteLine(appName);
+                    PrintVersion(appName, appVersion);
+                    Console.WriteLine();
                     Console.WriteLine("Options:");
                     Console.WriteLine("  --help              Show this help and exit");
                     Console.WriteLine("  --version           Show version information and exit");
                     Console.WriteLine("  --deviceID <inst>   BACnet Device instance (0..4194302)");
                     Console.WriteLine("  --port <udp>        BACnet/IP UDP port (default 47808)");
+                    Console.WriteLine();
+                    PrintInteractiveCommands();
                     return true;
                 }
             }
