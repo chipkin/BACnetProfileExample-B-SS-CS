@@ -2,3 +2,22 @@ bin/
 obj/
 *.user
 *.log
+
+# The CAS BACnet Stack library is a BUILD ARTIFACT of the separately licensed stack, built
+# from the submodule into submodules/cas-bacnet-stack/bin/ (README.md "Build the native CAS
+# BACnet Stack library") and copied by the .csproj only into the gitignored build output
+# (bin/Release/net8.0/). It is never committed or released from this repository - whatever
+# its name or platform.
+*.dll
+*.so
+*.so.*
+*.dylib
+*.lib
+*.a
+*.exp
+*.pdb
+*.node
+
+dist/
+smoke.log
+__pycache__/

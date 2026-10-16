@@ -65,7 +65,7 @@ example-series repository's `docs/profile-table.md`. Edit it there, not here.
 
 ```bash
 git submodule update --init --recursive   # once, if not cloned with --recursive
-dotnet build -c Release                   # compiles this example + the vendored adapter
+dotnet build -c Release                   # compiles this example + the stack's adapter (in place)
 ```
 
 `dotnet build` does **not** build the native CAS BACnet Stack library the
@@ -135,7 +135,7 @@ file; while it exists the simulated sensor wire is broken.
   take a `networkPortInstance` parameter, and the transport callbacks are
   `BACnetStack_RegisterCallbackReceiveMessageForPort()` /
   `BACnetStack_RegisterCallbackSendMessageForPort()`.
-- Reuse enumeration constants already defined in the vendored adapter
+- Reuse enumeration constants already defined in the stack's C# adapter
   (`CASBACnetStack.CASBACnetStackAdapter.OBJECT_TYPE_*`,
   `PROPERTY_IDENTIFIER_*`, `SERVICES_SUPPORTED_*`, ...) rather than
   redeclaring them in `common/CASBACnetStackExampleConstants.cs` - that file
@@ -171,8 +171,16 @@ Verification is behavioural, over the wire:
 
 Bump `APP_VERSION` in `Program.cs` and add an entry to
 [CHANGELOG.md](CHANGELOG.md), then tag `vX.Y.Z`. The GitHub Actions workflow
-builds the native library, builds + smoke-tests the .NET project, and
-publishes a release.
+builds the native library, builds + smoke-tests the .NET project, runs the
+Wire Tests on Linux, and publishes a release of the example's **source and
+`metrics.json` only**.
+
+**Never commit or release the CAS BACnet Stack binary** (`.dll`, `.so`, `.lib`,
+`.a`, `.node`, ...) - it is a separately licensed product. Users build it from
+the submodule (README). The workflow's Package and release steps fail if one
+reaches an artifact; `git ls-files | grep -iE '\.(dll|so|node|lib|a)$'` must
+print nothing. Never copy the adapter (`submodules/cas-bacnet-stack/adapters/csharp/`)
+into this repository either - the `.csproj` compiles it in place.
 
 ## License
 

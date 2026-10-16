@@ -17,7 +17,9 @@ This is the **first C# example** in the BACnet profile example series. There
 is no prior C# example repo to copy structurally - this one was built from the
 C++ edition's device model and the Node edition's documentation skeleton, with
 a binding mechanism new to the series: native **P/Invoke** against the
-vendored C# adapter, not an embedded C++ link or a Node N-API addon.
+stack's own generated C# adapter, compiled in place from the submodule
+(`submodules/cas-bacnet-stack/adapters/csharp/`), not an embedded C++ link or a
+Node N-API addon.
 
 - **[TUTORIAL.md](TUTORIAL.md)** - how to extend this example and how to review
   it for conformance. Read it when you start turning this into your own device.
@@ -181,7 +183,7 @@ This is a **self-contained** project. It ships:
 
 ## Prerequisites
 
-- **.NET 8 SDK or later** (verified with SDK 10.0.402 building `net8.0`) and
+- **.NET 8 SDK or later** (verified with SDK 8.0.426 building `net8.0`) and
   the .NET 8 runtime.
 - **Python 3** (standard library only) to run the Wire Tests.
 - Git (to fetch the stack submodule).
@@ -201,7 +203,8 @@ dotnet build -c Release
 Already cloned without `--recursive`? Run `git submodule update --init --recursive`
 first - the build needs the stack submodule's `adapters/csharp/` sources.
 
-`dotnet build` compiles this example and the vendored C# adapter - it does
+`dotnet build` compiles this example and the stack's C# adapter (in place, from
+the submodule's `adapters/csharp/`) - it does
 **not** build the native CAS BACnet Stack library the adapter calls into via
 P/Invoke. That is a separate step (below), because it is a native C++ build,
 not a .NET one.
@@ -211,8 +214,18 @@ not a .NET one.
 The C# adapter's P/Invoke declarations resolve
 `CASBACnetStack_x64_Release.dll` (Windows) / `libCASBACnetStack_x64_Release.so`
 (Linux) from the process's own directory (or the system library search path)
-at run time - there is no bundled copy and no NuGet package. Build it once
-from the stack submodule, then copy it next to this project's build output.
+at run time - there is no bundled copy and no NuGet package. **Build it yourself
+from the stack submodule**: it lands in `submodules/cas-bacnet-stack/bin/`, and
+`dotnet build` copies it from there into this project's build output.
+
+**The stack binary is never committed to this repository and never released.**
+The CAS BACnet Stack is a separately licensed product, so neither the DLL / `.so`
+nor anything else built from the stack is in git (`.gitignore` covers every
+library name) or in any GitHub Release asset: a release carries this example's
+source and `metrics.json` only, and its workflow fails if a `.dll`, `.so`,
+`.lib`, `.a`, `.node` or `.pdb` reaches an uploaded artifact. The only copy of
+the library outside the submodule is the one the `.csproj` puts in the gitignored
+build output (`bin/Release/net8.0/`).
 
 **Windows** - the stack's MSVC project has a `ReleaseDll|x64` configuration
 that builds exactly this DLL, under exactly this name (a customer-interface
@@ -240,19 +253,23 @@ CMake target (its CMake `adapters/cpp/` builds a static adapter; its Linux
 stack's own sources with g++:
 
 ```bash
+mkdir -p submodules/cas-bacnet-stack/bin
 g++ -shared -fPIC -std=c++17 -O2 \
     -I submodules/cas-bacnet-stack/source \
     submodules/cas-bacnet-stack/source/*.cpp \
-    -o bin/Release/net8.0/libCASBACnetStack_x64_Release.so
+    -o submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so
+
+dotnet build -c Release   # copies it next to the executable
 ```
 
-Either way, **the DLL/.so must end up in the same directory as
-`BACnetProfileExampleBSSCS.dll`/`.exe`** (`bin/Release/net8.0/` by default) -
-the .NET native-library resolver looks there first.
+Either way, `dotnet build` copies the library from `submodules/cas-bacnet-stack/bin/`
+into the same directory as `BACnetProfileExampleBSSCS.dll`/`.exe`
+(`bin/Release/net8.0/`, gitignored) - the .NET native-library resolver looks
+there first.
 
 ### Why only a Release build
 
-The vendored adapter selects the native library filename with `#if DEBUG` /
+The stack's C# adapter selects the native library filename with `#if DEBUG` /
 `#else`: `CASBACnetStack_x64_Debug` in a Debug build,
 `CASBACnetStack_x64_Release` in Release. The stack's MSVC solution only has a
 `ReleaseDll` configuration (see above) - there is no matching `DebugDll` that
@@ -373,7 +390,8 @@ python tests/run_wire_tests.py --port 47821 --exe "dotnet bin/Release/net8.0/BAC
 It ends with `ALL WIRE TESTS PASSED` (exit 0); about 25 seconds.
 [tests/README.md](tests/README.md) says what each check proves. **Verified on
 Windows only** (3 runs in a row, 36/36 checks each, no `[RETRY]` lines); the
-port has not been run on Linux.
+port has not been run on Linux locally. CI (`.github/workflows/release.yml`) runs
+them on Linux after the smoke test.
 
 ## How the C# binding differs from the C++/Node editions
 

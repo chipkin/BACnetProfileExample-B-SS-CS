@@ -38,7 +38,7 @@
 // objects, same names, same section layout, so you can diff the three side by
 // side. The systematic difference here is the binding mechanism: C# calls the
 // native CAS BACnet Stack library directly through P/Invoke (DllImport
-// declarations in the vendored adapter, submodules/cas-bacnet-stack/adapters/csharp/),
+// declarations in the stack's adapter, compiled in place from submodules/cas-bacnet-stack/adapters/csharp/),
 // not an embedded/compiled-from-source link (C++) or a native Node addon
 // (Node). See README.md "How the C# binding differs" for what that means in
 // practice - most importantly, THERE IS NO LoadBACnetFunctions() STEP: the
@@ -663,8 +663,9 @@ namespace BACnetProfileExampleBSSCS
             {
                 Console.Error.WriteLine("Error: could not load the CAS BACnet Stack native library: " + ex.Message);
                 Console.Error.WriteLine(
-                    "Copy CASBACnetStack_x64_Release.dll (Windows) / libCASBACnetStack_x64_Release.so (Linux) " +
-                    "next to this executable - see README.md \"Build the native CAS BACnet Stack library\".");
+                    "Build CASBACnetStack_x64_Release.dll (Windows) / libCASBACnetStack_x64_Release.so (Linux) " +
+                    "from the stack submodule into submodules/cas-bacnet-stack/bin/, then run dotnet build -c Release " +
+                    "to copy it next to this executable - see README.md \"Build the native CAS BACnet Stack library\".");
                 return 1;
             }
             catch (BadImageFormatException ex)

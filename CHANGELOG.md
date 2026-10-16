@@ -9,7 +9,7 @@ and this project adheres to
 ## [1.1.0] - unreleased
 
 Profile-functional (series bar): a faithful port of
-`BACnetProfileExample-B-SS-CPP` 1.3.0 (branch `profile-functional` @ `0743e75`).
+`BACnetProfileExample-B-SS-CPP` 1.3.0 (tag `v1.3.0`; `0743e75` plus a CI-only commit).
 The sensor performs the B-SS Profile Function - ANSI/ASHRAE 135-2024 Annex
 L.4.5, "Ability to provide values for any of its BACnet objects upon request" -
 with readings that change, and shows a Failure Mode. The BACnet Surface is
@@ -59,6 +59,21 @@ unchanged (DS-RP-B, DM-DDB-B, DM-DOB-B; the same five objects).
   replacing the Simulation with hardware and reporting a sensor fault; PICS:
   Reliability row, segmentation, Protocol_Revision 30, Application_Software_Version
   1.1.0. APP_VERSION 1.0.2 -> 1.1.0.
+- **The CAS BACnet Stack binary is never released.** `.github/workflows/release.yml`
+  no longer copies the `.dll` / `.so` (or the .NET build output) into `dist/`:
+  a release carries this example's source (`BACnetProfileExampleBSSCS.zip`,
+  from the Linux build), `README.md`, `LICENSE` and `metrics-*.json` only. The
+  Package step and the release job each fail if a `.dll`, `.so`, `.node`,
+  `.lib`, `.a`, `.pdb`, `.exp` or `.dylib` reaches an artifact or release asset.
+  CI also runs the Wire Tests on Linux after the smoke test, as the reference
+  does. `.gitignore` covers every stack binary name. README: build the library
+  yourself from the submodule into `submodules/cas-bacnet-stack/bin/` (the
+  Linux `g++` line now writes there too); the `.csproj` copies it only into the
+  gitignored build output. The stack's C# adapter is described as compiled in
+  place from the submodule, not vendored. Re-verified on Windows (SDK 8.0.426,
+  pre-built `ReleaseDll|x64` at the pin): Wire Tests 3 runs in a row, 36/36
+  checks each, no `[RETRY]` lines; mutations (Simulation tick removed, wire
+  never breaks, Reliability declines, WriteProperty enabled) each fail a check.
 
 ## [1.0.2] - unreleased
 
