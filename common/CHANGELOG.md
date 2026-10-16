@@ -17,6 +17,12 @@ single-port example uses.
   `h` on, so a harness that writes `q` to the example's stdin (the series'
   `wiretest/`) stops it cleanly.
 - `SimpleUDP.Port` - the UDP port the socket is bound to.
+- `StackLibraryFileName()` - the native CAS BACnet Stack library's file name
+  on this OS, as the adapter's `[DllImport]` resolves it
+  (`CASBACnetStack_x64_Release.dll` / `libCASBACnetStack_x64_Release.so`).
+- `PrintVersion()` works without the native library: if it cannot be loaded,
+  the stack-version line says `not available (...)` instead of throwing, so
+  `--help` and `--version` run without the licensed library.
 
 ### Changed
 

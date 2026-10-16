@@ -218,14 +218,50 @@ at run time - there is no bundled copy and no NuGet package. **Build it yourself
 from the stack submodule**: it lands in `submodules/cas-bacnet-stack/bin/`, and
 `dotnet build` copies it from there into this project's build output.
 
-**The stack binary is never committed to this repository and never released.**
-The CAS BACnet Stack is a separately licensed product, so neither the DLL / `.so`
-nor anything else built from the stack is in git (`.gitignore` covers every
-library name) or in any GitHub Release asset: a release carries this example's
-source and `metrics.json` only, and its workflow fails if a `.dll`, `.so`,
-`.lib`, `.a`, `.node` or `.pdb` reaches an uploaded artifact. The only copy of
-the library outside the submodule is the one the `.csproj` puts in the gitignored
-build output (`bin/Release/net8.0/`).
+**The stack library is never committed to this repository and never released.**
+The CAS BACnet Stack is a separately licensed product, so the DLL / `.so` is not
+in git (`.gitignore` covers every library name) and not in any GitHub Release
+asset. The only copy of the library outside the submodule is the one the
+`.csproj` puts in the gitignored build output (`bin/Release/net8.0/`); `dotnet
+publish` never copies it.
+
+### What a release contains (and why it won't run on its own)
+
+Each GitHub Release has:
+
+- `BACnetProfileExampleBSSCS-windows-x64.zip` and
+  `BACnetProfileExampleBSSCS-linux-x64.zip` - the app, published
+  self-contained as one file (`BACnetProfileExampleBSSCS.exe` /
+  `BACnetProfileExampleBSSCS`, plus its `.pdb`; no .NET install needed), with
+  `README.md` and `LICENSE`;
+- `README.md`, `LICENSE` and `metrics-windows.json` / `metrics-linux.json`.
+
+It does **not** contain the CAS BACnet Stack library
+(`CASBACnetStack_x64_Release.dll` on Windows, `libCASBACnetStack_x64_Release.so`
+on Linux), because that library is a commercially licensed (paid) product from
+Chipkin. **The released app cannot run without it.** Before anything else, it
+looks for the library in the folder that holds the executable; if it is not
+there, it prints this to stderr and exits with code 1 (`--help` and
+`--version` still work):
+
+```
+ERROR: This example cannot run without the CAS BACnet Stack library.
+
+  Missing file: CASBACnetStack_x64_Release.dll
+  Looked in:    C:\path\to\BACnetProfileExampleBSSCS\
+
+The CAS BACnet Stack is a commercially licensed (paid) library from Chipkin.
+It is not included in this release, so the example cannot start without it.
+
+  - To license the CAS BACnet Stack: https://store.chipkin.com/contact-us
+  - Licensed customers: build the library from the cas-bacnet-stack submodule
+    (see README.md) and place CASBACnetStack_x64_Release.dll next to this executable.
+```
+
+To run a release: license the stack from Chipkin
+(<https://store.chipkin.com/contact-us>), build the library from the
+submodule as below, and put it **next to the executable** - in the same folder
+as `BACnetProfileExampleBSSCS.exe` / `BACnetProfileExampleBSSCS`.
 
 **Windows** - the stack's MSVC project has a `ReleaseDll|x64` configuration
 that builds exactly this DLL, under exactly this name (a customer-interface

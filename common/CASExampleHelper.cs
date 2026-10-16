@@ -256,14 +256,43 @@ namespace BACnetProfileExampleBSSCS.Common
         // CLI helpers (--help / --version / --deviceID / --port)
         // ---------------------------------------------------------------------
 
+        /// <summary>
+        /// The native CAS BACnet Stack library's file name on this OS, as the adapter's
+        /// [DllImport] resolves it: CASBACnetStack_x64_Release.dll on Windows,
+        /// libCASBACnetStack_x64_Release.so on Linux (..._Debug in a Debug build).
+        /// </summary>
+        public static string StackLibraryFileName()
+        {
+            string name = CASBACnetStackAdapter.BACNET_API_DLL_FILENAME;
+            if (OperatingSystem.IsWindows())
+            {
+                return name + ".dll";
+            }
+            return "lib" + name + (OperatingSystem.IsMacOS() ? ".dylib" : ".so");
+        }
+
         public static void PrintVersion(string appName, string appVersion)
         {
             Console.WriteLine(appName + " v" + appVersion);
-            Console.WriteLine("CAS BACnet Stack version: " +
-                CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion());
+            // --help and --version must work without the native CAS BACnet Stack
+            // library (a release does not include it): if it cannot be loaded, say
+            // so on the stack-version line instead of throwing.
+            string stackVersion;
+            try
+            {
+                stackVersion =
+                    CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion();
+            }
+            catch (Exception ex) when (ex is DllNotFoundException || ex is BadImageFormatException ||
+                                       ex is EntryPointNotFoundException)
+            {
+                stackVersion = "not available (the native library " + StackLibraryFileName() +
+                    " could not be loaded)";
+            }
+            Console.WriteLine("CAS BACnet Stack version: " + stackVersion);
             // The vendored common/ helper has its own version (common/CHANGELOG.md)
             // so it is easy to tell whether this example's copy is stale.
             Console.WriteLine("Common helper (common/) version: " + COMMON_VERSION);

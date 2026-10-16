@@ -45,9 +45,10 @@
 // C# adapter's functions are plain `[DllImport] static extern` declarations,
 // resolved by the .NET runtime the first time one is called, not a runtime
 // GetProcAddress dance the application drives itself. A missing native library
-// therefore fails as a DllNotFoundException on first use, not a checked
-// LoadBACnetFunctions() return value - see the try/catch around PrintVersion()
-// in main() below.
+// would therefore fail as a DllNotFoundException on first use, not a checked
+// LoadBACnetFunctions() return value - so Main() checks for the library file in
+// the folder it runs from before any stack call, and prints what is missing and
+// how to get it (the library is licensed separately and not in any release).
 //
 // The device exposes three read-only sensor objects plus the Network Port
 // object that every BACnet device must have. Each object is given a colour name
@@ -633,58 +634,92 @@ namespace BACnetProfileExampleBSSCS
         private static readonly CASBACnetStackAdapter.FPCallbackGetPropertyOctetString getPropertyOctetStringDelegate = GetPropertyOctetString;
         private static readonly CASBACnetStackAdapter.FPCallbackGetPropertyCharacterString getPropertyCharacterStringDelegate = GetPropertyCharacterString;
 
+        // Printed (to stderr) when the CAS BACnet Stack library is missing or
+        // cannot be loaded. The example cannot do anything without it. The text is
+        // the same in every language port of this example.
+        private static void PrintStackLibraryMissing(string stackLibrary, string[] searched, string detail)
+        {
+            System.IO.TextWriter error = Console.Error;
+            error.WriteLine("ERROR: This example cannot run without the CAS BACnet Stack library.");
+            error.WriteLine();
+            error.WriteLine("  Missing file: " + stackLibrary);
+            for (int i = 0; i < searched.Length; i++)
+            {
+                error.WriteLine((i == 0 ? "  Looked in:    " : "                ") + searched[i]);
+            }
+            error.WriteLine();
+            error.WriteLine("The CAS BACnet Stack is a commercially licensed (paid) library from Chipkin.");
+            error.WriteLine("It is not included in this release, so the example cannot start without it.");
+            error.WriteLine();
+            error.WriteLine("  - To license the CAS BACnet Stack: https://store.chipkin.com/contact-us");
+            error.WriteLine("  - Licensed customers: build the library from the cas-bacnet-stack submodule");
+            error.WriteLine("    (see README.md) and place " + stackLibrary + " next to this executable.");
+            if (detail != null)
+            {
+                error.WriteLine();
+                error.WriteLine("Details: " + detail);
+            }
+        }
+
         // -------------------------------------------------------------------
         // 4. Main
         // -------------------------------------------------------------------
         private static int Main(string[] args)
         {
-            // --- Version + the native library sanity check --------------------
-            // Unlike the C++/Node editions there is no LoadBACnetFunctions() to
-            // call: the C# adapter's BACnetStack_* methods are plain
-            // `[DllImport] static extern` declarations, and the .NET runtime
-            // resolves the native CASBACnetStack_x64_{Debug,Release} library the
-            // first time one of them is actually called - not up front. So the
-            // FIRST stack call in this program (inside PrintVersion(), which
-            // calls BACnetStack_GetAPIMajorVersion()) doubles as that check: if
-            // the native library is missing, the wrong bitness, or missing a
-            // dependency, this throws a DllNotFoundException/BadImageFormatException
-            // here, before anything else has been touched (no socket bound yet).
+            // --- --help / --version ----------------------------------------------
+            // These print and exit, and work without the native CAS BACnet Stack
+            // library (PrintVersion() then says the stack version is not available).
             if (CASExampleHelper.HandleHelpAndVersionArgs(args, APP_NAME, APP_VERSION))
             {
                 return 0;
             }
             ushort port = CASExampleHelper.ParsePortArg(args, 47808);
             g_deviceInstance = CASExampleHelper.ParseDeviceIdArg(args, g_deviceInstance);
+
+            // --- Is the CAS BACnet Stack library here? -----------------------------
+            // Unlike the C++/Node editions there is no LoadBACnetFunctions() to
+            // call: the C# adapter's BACnetStack_* methods are plain
+            // `[DllImport] static extern` declarations, and the .NET runtime
+            // resolves the native library the first time one of them is called.
+            // The library is the separately licensed CAS BACnet Stack and is NOT
+            // part of this example or its releases, so check for it up front, in
+            // the folder this program runs from, before any stack call - and say
+            // plainly what is missing and how to get it.
+            string stackLibrary = CASExampleHelper.StackLibraryFileName();
+            string[] searched = { AppContext.BaseDirectory };
+            if (!System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, stackLibrary)))
+            {
+                PrintStackLibraryMissing(stackLibrary, searched, null);
+                return 1;
+            }
+
+            // The first stack call. If the library is there but still cannot be
+            // loaded (the wrong architecture, a missing dependency, or it was found
+            // somewhere else and is not the right file), the runtime throws here,
+            // before anything else has been touched (no socket bound yet).
+            //
+            // Build the Device object's Firmware_Revision from the stack's own real
+            // version - it reports the underlying CAS BACnet Stack, not this app.
             try
             {
-                CASExampleHelper.PrintVersion(APP_NAME, APP_VERSION);
+                g_firmwareRevision =
+                    CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
+                    CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion();
             }
             catch (DllNotFoundException ex)
             {
-                Console.Error.WriteLine("Error: could not load the CAS BACnet Stack native library: " + ex.Message);
-                Console.Error.WriteLine(
-                    "Build CASBACnetStack_x64_Release.dll (Windows) / libCASBACnetStack_x64_Release.so (Linux) " +
-                    "from the stack submodule into submodules/cas-bacnet-stack/bin/, then run dotnet build -c Release " +
-                    "to copy it next to this executable - see README.md \"Build the native CAS BACnet Stack library\".");
+                PrintStackLibraryMissing(stackLibrary, searched, ex.Message);
                 return 1;
             }
             catch (BadImageFormatException ex)
             {
-                Console.Error.WriteLine("Error: the native CAS BACnet Stack library does not match this process's " +
-                    "architecture (this build is x64): " + ex.Message);
+                PrintStackLibraryMissing(stackLibrary, searched,
+                    "the library found does not match this process's architecture (this build is x64): " + ex.Message);
                 return 1;
             }
-
-            // The native library is confirmed loaded at this point (PrintVersion()
-            // above made the first successful stack call). Build the Device
-            // object's Firmware_Revision from the stack's own real version - it
-            // reports the underlying CAS BACnet Stack, not this app - using the
-            // same 4 getter calls PrintVersion() already used for the banner.
-            g_firmwareRevision =
-                CASBACnetStackAdapter.BACnetStack_GetAPIMajorVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIMinorVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIPatchVersion() + "." +
-                CASBACnetStackAdapter.BACnetStack_GetAPIBuildVersion();
+            CASExampleHelper.PrintVersion(APP_NAME, APP_VERSION);
 
             // --- Bind the BACnet/IP socket -------------------------------------
             try

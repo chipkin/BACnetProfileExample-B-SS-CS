@@ -59,21 +59,36 @@ unchanged (DS-RP-B, DM-DDB-B, DM-DOB-B; the same five objects).
   replacing the Simulation with hardware and reporting a sensor fault; PICS:
   Reliability row, segmentation, Protocol_Revision 30, Application_Software_Version
   1.1.0. APP_VERSION 1.0.2 -> 1.1.0.
-- **The CAS BACnet Stack binary is never released.** `.github/workflows/release.yml`
-  no longer copies the `.dll` / `.so` (or the .NET build output) into `dist/`:
-  a release carries this example's source (`BACnetProfileExampleBSSCS.zip`,
-  from the Linux build), `README.md`, `LICENSE` and `metrics-*.json` only. The
-  Package step and the release job each fail if a `.dll`, `.so`, `.node`,
-  `.lib`, `.a`, `.pdb`, `.exp` or `.dylib` reaches an artifact or release asset.
-  CI also runs the Wire Tests on Linux after the smoke test, as the reference
-  does. `.gitignore` covers every stack binary name. README: build the library
-  yourself from the submodule into `submodules/cas-bacnet-stack/bin/` (the
-  Linux `g++` line now writes there too); the `.csproj` copies it only into the
-  gitignored build output. The stack's C# adapter is described as compiled in
-  place from the submodule, not vendored. Re-verified on Windows (SDK 8.0.426,
-  pre-built `ReleaseDll|x64` at the pin): Wire Tests 3 runs in a row, 36/36
-  checks each, no `[RETRY]` lines; mutations (Simulation tick removed, wire
-  never breaks, Reliability declines, WriteProperty enabled) each fail a check.
+- **Releases ship the app without the CAS BACnet Stack library.**
+  `.github/workflows/release.yml` publishes the app self-contained as one file
+  (`dotnet publish -r win-x64` / `linux-x64`) and releases
+  `BACnetProfileExampleBSSCS-windows-x64.zip` / `-linux-x64.zip` (the app, its
+  `.pdb`, `README.md`, `LICENSE`), plus `README.md`, `LICENSE` and
+  `metrics-*.json`. It never ships `CASBACnetStack_x64_Release.dll` /
+  `libCASBACnetStack_x64_Release.so`: the `.csproj` marks them
+  `CopyToPublishDirectory="Never"`, and guard steps (the published app, the
+  package, and the release assets including inside the zips) fail on any
+  `CASBACnetStack*` or `.node` file. Before, the workflow copied the stack DLL
+  / `.so` into the release. CI also runs the published app without the library
+  and asserts the first line of the missing-library message and exit code 1,
+  and runs the Wire Tests on Linux after the smoke test, as the reference does.
+- **Missing-library error.** Before any stack call, `Main()` looks for the
+  library in the folder that holds the executable (`AppContext.BaseDirectory`).
+  If it is not there, `Main()` prints the series' shared message to stderr
+  ("ERROR: This example cannot run without the CAS BACnet Stack library.",
+  the missing file, where it looked, that the stack is a commercially
+  licensed (paid) library from Chipkin that is not in the release, the
+  contact URL, and where licensed customers put it) and exits 1. A
+  `DllNotFoundException` / `BadImageFormatException` on the first stack call
+  prints the same message plus a `Details:` line. `--help` and `--version`
+  work without the library (`common/` `PrintVersion()` then says the stack
+  version is not available).
+- `.gitignore` covers every stack binary name. README: what a release
+  contains, why it will not run without the licensed library, where to put the
+  library; build it from the submodule into `submodules/cas-bacnet-stack/bin/`
+  (the Linux `g++` line now writes there too). The stack's C# adapter is
+  described as compiled in place from the submodule, not vendored. TUTORIAL:
+  troubleshooting rows for the message.
 
 ## [1.0.2] - unreleased
 

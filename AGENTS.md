@@ -172,14 +172,22 @@ Verification is behavioural, over the wire:
 Bump `APP_VERSION` in `Program.cs` and add an entry to
 [CHANGELOG.md](CHANGELOG.md), then tag `vX.Y.Z`. The GitHub Actions workflow
 builds the native library, builds + smoke-tests the .NET project, runs the
-Wire Tests on Linux, and publishes a release of the example's **source and
-`metrics.json` only**.
+Wire Tests on Linux, publishes the app (`dotnet publish`, self-contained single
+file, windows-x64 and linux-x64), checks that the published app without the
+stack library prints the missing-library message and exits 1, and publishes a
+release: the app zips, README, LICENSE and `metrics-*.json`.
 
-**Never commit or release the CAS BACnet Stack binary** (`.dll`, `.so`, `.lib`,
-`.a`, `.node`, ...) - it is a separately licensed product. Users build it from
-the submodule (README). The workflow's Package and release steps fail if one
-reaches an artifact; `git ls-files | grep -iE '\.(dll|so|node|lib|a)$'` must
-print nothing. Never copy the adapter (`submodules/cas-bacnet-stack/adapters/csharp/`)
+**Never commit or release the CAS BACnet Stack library**
+(`CASBACnetStack_x64_Release.dll` / `libCASBACnetStack_x64_Release.so`, any
+`CASBACnetStack*` file, or a `.node`) - it is a separately licensed product.
+Licensed users build it from the submodule (README). The `.csproj` never copies
+it into a publish folder, and the workflow's guard steps fail if one reaches an
+artifact or release asset; `git ls-files | grep -iE '\.(dll|so|node|lib|a)$'`
+must print nothing. `Program.cs` checks for the library next to the
+executable before any stack call and prints the series' shared
+missing-library message (exit 1); keep that text identical to the other
+language ports (`docs/ports-session-rules-2026-10-16.md` section 2b in the
+series repository). Never copy the adapter (`submodules/cas-bacnet-stack/adapters/csharp/`)
 into this repository either - the `.csproj` compiles it in place.
 
 ## License

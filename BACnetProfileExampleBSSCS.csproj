@@ -63,10 +63,10 @@
          build output (bin/); the stack binary is never committed or released. -->
     <None Include="submodules/cas-bacnet-stack/bin/CASBACnetStack_x64_Release.dll"
           Condition="Exists('submodules/cas-bacnet-stack/bin/CASBACnetStack_x64_Release.dll')"
-          Link="CASBACnetStack_x64_Release.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+          Link="CASBACnetStack_x64_Release.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Visible="false" />
     <None Include="submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so"
           Condition="Exists('submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so')"
-          Link="libCASBACnetStack_x64_Release.so" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+          Link="libCASBACnetStack_x64_Release.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Visible="false" />
   </ItemGroup>
 
 </Project>

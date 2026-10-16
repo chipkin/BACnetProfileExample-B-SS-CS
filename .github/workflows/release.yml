@@ -1,5 +1,6 @@
 # Build, smoke-test and Wire-Test the B-SS C# example, and publish a GitHub Release (the
-# example's source + metrics.json) when a vX.Y.Z tag is pushed. PRs run the same build and
+# runnable app for windows-x64 and linux-x64, without the CAS BACnet Stack library, plus
+# README, LICENSE and metrics.json) when a vX.Y.Z tag is pushed. PRs run the same build and
 # tests without publishing.
 #
 # Unlike the C++/Node siblings, this build has TWO stages: (1) build the native CAS BACnet
@@ -9,11 +10,13 @@
 # native library next to its output so the P/Invoke adapter can find it at run time. The
 # C# adapter is compiled in place from submodules/cas-bacnet-stack/adapters/csharp/.
 #
-# THE STACK BINARY IS NEVER PACKAGED. The CAS BACnet Stack (library and adapter) is a
-# separate, commercially licensed product: CI builds the library only to test this example,
-# and neither it nor anything compiled from it (the .NET build output, which links the
-# adapter) goes into any uploaded artifact or release asset. A user builds the library from
-# the submodule (README.md). The Package and release steps below check this.
+# THE STACK LIBRARY IS NEVER PACKAGED. The CAS BACnet Stack is a separate, commercially
+# licensed product: CI builds its library only to test this example. A release ships the
+# app (a self-contained single-file `dotnet publish`) but never CASBACnetStack_x64_Release.dll
+# / libCASBACnetStack_x64_Release.so or any other CASBACnetStack* file, so the released app
+# cannot start until a licensed user puts the library next to it; without it, the app prints
+# a clear error and exits 1 (checked below). A licensed user builds the library from the
+# submodule (README.md). The Package and release steps fail if a stack binary gets in.
 #
 # The CAS BACnet Stack is a PRIVATE git submodule: the repository secret CAS_STACK_PAT must
 # hold a PAT with read access to chipkin/cas-bacnet-stack.
@@ -42,12 +45,14 @@ jobs:
             artifact: BACnetProfileExampleBSSCS-windows-x64
             outdir: bin/Release/net8.0
             exe: BACnetProfileExampleBSSCS.exe
+            rid: win-x64
             nativelib: CASBACnetStack_x64_Release.dll
             metrics: metrics-windows.json
           - os: ubuntu-latest
             artifact: BACnetProfileExampleBSSCS-linux-x64
             outdir: bin/Release/net8.0
             exe: BACnetProfileExampleBSSCS
+            rid: linux-x64
             nativelib: libCASBACnetStack_x64_Release.so
             metrics: metrics-linux.json
     steps:
@@ -153,25 +158,61 @@ jobs:
         shell: bash
         run: python3 tests/run_wire_tests.py --port 47821
 
-      - name: Package (the example's own files - never the stack library or the build output)
+      # The released app: a self-contained single-file publish (no .NET install needed). The
+      # .csproj never copies the stack library into a publish folder (CopyToPublishDirectory
+      # Never), and the guard below makes sure of it.
+      - name: Publish the app (without the CAS BACnet Stack library)
         shell: bash
         run: |
-          mkdir -p dist
+          dotnet publish -c Release -r "${{ matrix.rid }}" --self-contained true \
+              -p:PublishSingleFile=true -o publish
+          ls -la publish
+
+      - name: Guard - no CAS BACnet Stack binary in the published app
+        shell: bash
+        run: |
+          if find publish -type f | grep -iE '(^|/)[^/]*casbacnetstack[^/]*$|\.node$'; then
+            echo "FAIL: a CAS BACnet Stack binary is in the published app"; exit 1
+          fi
+
+      # What a user who downloads the release sees: without the licensed library the app
+      # must print the missing-library message and exit 1 - never crash.
+      - name: The published app without the library prints the error and exits 1
+        shell: bash
+        run: |
+          set +e
+          ./publish/"${{ matrix.exe }}" --port 47823 > missing.out 2> missing.err < /dev/null
+          code=$?
+          set -e
+          cat missing.err
+          [ "$code" -eq 1 ] || { echo "FAIL: exit code $code, expected 1"; cat missing.out; exit 1; }
+          head -1 missing.err | tr -d '\r' | grep -qxF "ERROR: This example cannot run without the CAS BACnet Stack library." \
+              || { echo "FAIL: the first stderr line is not the missing-library message"; exit 1; }
+          ./publish/"${{ matrix.exe }}" --version
+
+      - name: Package (the app, README, LICENSE, metrics - never the stack library)
+        shell: bash
+        run: |
+          mkdir -p dist package
+          cp publish/* package/
+          cp README.md LICENSE package/
           cp "${{ matrix.metrics }}" dist/
-          # The source and docs ship once, from the Linux build, as one zip (folders keep
-          # their layout): the Windows checkout converts them to CRLF, so the two platforms'
-          # copies would differ byte for byte and the release job's one-copy-per-name check
-          # would refuse them.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            (cd package && 7z a -tzip "../dist/${{ matrix.artifact }}.zip" .)
+          else
+            (cd package && zip -r "../dist/${{ matrix.artifact }}.zip" .)
+          fi
+          # README.md and LICENSE also ship once as plain assets, from the Linux build: the
+          # Windows checkout converts them to CRLF, so the two copies would differ byte for
+          # byte and the release job's one-copy-per-name check would refuse them.
           if [ "$RUNNER_OS" = "Linux" ]; then
-            zip -r dist/BACnetProfileExampleBSSCS.zip Program.cs BACnetProfileExampleBSSCS.csproj \
-                common tests wiretest docs README.md TUTORIAL.md CHANGELOG.md LICENSE \
-                -x '*__pycache__*'
             cp README.md LICENSE dist/
           fi
-          # The CAS BACnet Stack is never redistributed: refuse to upload any binary.
-          if find dist -type f | grep -iE '\.(dll|so|node|lib|a|pdb|exp|dylib)$'; then
-            echo "FAIL: a stack binary is in dist/"; exit 1
+          # The CAS BACnet Stack is never redistributed: refuse to upload any stack binary.
+          if find dist package -type f | grep -iE '(^|/)[^/]*casbacnetstack[^/]*$|\.node$'; then
+            echo "FAIL: a CAS BACnet Stack binary is in dist/"; exit 1
           fi
+          ls -la dist
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -192,7 +233,7 @@ jobs:
       # with one name makes the release action fail part-way and leaves a draft release
       # behind (a real tagged release hit this). Flatten the artifacts into one folder with
       # a single copy of each file name, and stop if two files share a name but differ.
-      # Then refuse to publish if any binary got through.
+      # Then refuse to publish if a CAS BACnet Stack binary got through.
       - name: Collect release assets (one copy of each file name)
         shell: bash
         run: |
@@ -205,8 +246,10 @@ jobs:
               cp "$f" "release/$name"
             fi
           done
-          if find release -type f | grep -iE '\.(dll|so|node|lib|a|pdb|exp|dylib)$'; then
-            echo "FAIL: a stack binary is in the release assets"; exit 1
+          # Look inside the app zips too.
+          if { find release -type f; for z in release/*.zip; do unzip -Z1 "$z"; done; } \
+              | grep -iE '(^|/)[^/]*casbacnetstack[^/]*$|\.node$'; then
+            echo "FAIL: a CAS BACnet Stack binary is in the release assets"; exit 1
           fi
           ls -l release
       - uses: softprops/action-gh-release@v2
