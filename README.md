@@ -9,7 +9,7 @@ discoverable via **Who-Is / I-Am**. Its readings follow a sensor
 
 This is a faithful C# port of the reworked
 [BACnetProfileExample-B-SS-CPP](https://github.com/chipkin/BACnetProfileExample-B-SS-CPP)
-(v1.3.0): the same Device, objects, properties, Simulation, Failure Modes,
+(v1.4.0): the same Device, objects, properties, Simulation, Failure Modes,
 test-only hook and command-line options, proven by the same
 [Wire Tests](#wire-tests), which cannot tell the two apart on the wire.
 
@@ -26,10 +26,11 @@ Node N-API addon.
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.1.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`, loaded as the
-> `ReleaseDll` native library through the stack's own `adapters/csharp/`), at
-> **Protocol_Revision 30**, with the vendored C# `common/` helper at **v1.1.0**
+> **Versions:** this document describes **example v1.2.0**, built and verified
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `69b6249f`, loaded as the
+> native library its CMake `windows-x64-dll` preset builds, through the
+> stack's own `adapters/csharp/`), at
+> **Protocol_Revision 30**, with the vendored C# `common/` helper at **v1.2.0**
 > and `wiretest/` at **0.7.0**. Running the example prints all three versions -
 > if what it prints disagrees with this line, trust the program and check
 > `CHANGELOG.md`.
@@ -174,11 +175,12 @@ This is a **self-contained** project. It ships:
 - `BACnetProfileExampleBSSCS.csproj` - the .NET build (`net8.0`), the same on
   Windows and Linux.
 - `docs/PICS.md` - the conformance statement.
+- `TODO.md` - known gaps and what is not implemented on purpose.
 - `docs/objects.json` - the input to the objects-and-properties generator.
 - `submodules/cas-bacnet-stack/` - the **CAS BACnet Stack as a git submodule**
   (private; requires a license - see above). Its `adapters/csharp/` is
   included directly into this project (`<Compile Include>` in the .csproj,
-  no NuGet package); its `source/` and MSVC/CMake build produce the separate
+  no NuGet package); its `source/` and CMake build produce the separate
   native shared library this example loads at run time.
 
 ## Prerequisites
@@ -187,9 +189,10 @@ This is a **self-contained** project. It ships:
   the .NET 8 runtime.
 - **Python 3** (standard library only) to run the Wire Tests.
 - Git (to fetch the stack submodule).
-- **To build the native library** (see below): on Windows, Visual Studio 2022
-  Build Tools (MSBuild) building the stack's `projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj`;
-  on Linux, a C++17 toolchain (g++/clang++).
+- **To build the native library** (see below): **CMake 3.25 or later** (4.2
+  or later for the stack's Visual Studio 2026 presets) - the stack's only
+  build. On Windows, Visual Studio 2026 (or 2022) Build Tools with the C++
+  workload; on Linux, a C++17 toolchain (g++/clang++) and Ninja.
 
 ## Build
 
@@ -263,57 +266,68 @@ To run a release: license the stack from Chipkin
 submodule as below, and put it **next to the executable** - in the same folder
 as `BACnetProfileExampleBSSCS.exe` / `BACnetProfileExampleBSSCS`.
 
-**Windows** - the stack's MSVC project has a `ReleaseDll|x64` configuration
-that builds exactly this DLL, under exactly this name (a customer-interface
-build: no test-tool exports):
+The stack has **one build, CMake** (`CMakeLists.txt` and `CMakePresets.json`
+in the submodule; its README's "Building and testing" and AGENTS.md
+"Building" list the presets). Each preset builds into
+`submodules/cas-bacnet-stack/build-<preset>/` (ignored by the stack's own
+`.gitignore`), and `cmake --install build-<preset>` copies the library into
+the submodule's `bin/`, under exactly the name the adapter loads. It is a
+customer-interface build (no test-tool exports; `CASBACNET_LIBRARY_TESTTOOL`
+is off by default). Run the commands from the submodule's folder, because
+`cmake --preset` reads `CMakePresets.json` from the current directory.
+
+**Windows** - the `windows-x64-dll` preset (Visual Studio 2026, CMake 4.2 or
+later; use `windows-x64-dll-vs2022` / `windows-x64-dll-vs2022-release` with
+Visual Studio 2022). PowerShell or a Developer Prompt:
 
 ```powershell
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
-  submodules\cas-bacnet-stack\projects\msvs\CASBACnetStack\CASBACnetStack.vcxproj `
-  /p:Configuration=ReleaseDll /p:Platform=x64
+cd submodules\cas-bacnet-stack
+cmake --preset windows-x64-dll
+cmake --build --preset windows-x64-dll-release
+cmake --install build-windows-x64-dll --config Release   # -> bin\CASBACnetStack_x64_Release.dll
+cd ..\..
 
 dotnet build -c Release   # copies submodules\cas-bacnet-stack\bin\CASBACnetStack_x64_Release.dll next to the .exe
 ```
 
-The `.csproj` copies the DLL (or `libCASBACnetStack_x64_Release.so`) from the
-submodule's `bin/` into the build output whenever it exists there, so build the
-native library first and `dotnet build` second.
+The install step copies the DLL only: its import library has the stack's
+static-library name and stays in the build tree.
 
-(Adjust the MSBuild path to your Visual Studio / Build Tools install; `vswhere`
-or the "Developer Command Prompt for VS 2022" both resolve it for you if you
-have Visual Studio Installer set up.)
-
-**Linux** - the stack does not currently ship a ready-made shared-library
-CMake target (its CMake `adapters/cpp/` builds a static adapter; its Linux
-`projects/linux/` build is for the gtest suite). Build one directly from the
-stack's own sources with g++:
+**Linux** - the `linux-x64-release-shared` preset (Ninja):
 
 ```bash
-mkdir -p submodules/cas-bacnet-stack/bin
-g++ -shared -fPIC -std=c++17 -O2 \
-    -I submodules/cas-bacnet-stack/source \
-    submodules/cas-bacnet-stack/source/*.cpp \
-    -o submodules/cas-bacnet-stack/bin/libCASBACnetStack_x64_Release.so
+cd submodules/cas-bacnet-stack
+cmake --preset linux-x64-release-shared
+cmake --build --preset linux-x64-release-shared
+cmake --install build-linux-x64-release-shared   # -> bin/libCASBACnetStack_x64_Release.so
+cd ../..
 
 dotnet build -c Release   # copies it next to the executable
 ```
 
-Either way, `dotnet build` copies the library from `submodules/cas-bacnet-stack/bin/`
-into the same directory as `BACnetProfileExampleBSSCS.dll`/`.exe`
+The `.csproj` copies the DLL (or `libCASBACnetStack_x64_Release.so`) from the
+submodule's `bin/` into the build output whenever it exists there, so build the
+native library first and `dotnet build` second. Either way it lands in the
+same directory as `BACnetProfileExampleBSSCS.dll`/`.exe`
 (`bin/Release/net8.0/`, gitignored) - the .NET native-library resolver looks
 there first.
+
+(Before stack `6.x` @ `29b83de6` this README built the DLL with MSBuild from
+the stack's `projects/msvs/` Visual Studio project and the `.so` with a
+hand-written `g++ -shared` line. The stack has since removed `projects/msvs/`
+and `projects/linux/`; CMake is its only build.)
 
 ### Why only a Release build
 
 The stack's C# adapter selects the native library filename with `#if DEBUG` /
 `#else`: `CASBACnetStack_x64_Debug` in a Debug build,
-`CASBACnetStack_x64_Release` in Release. The stack's MSVC solution only has a
-`ReleaseDll` configuration (see above) - there is no matching `DebugDll` that
-would produce `CASBACnetStack_x64_Debug.dll`. So build and run this example in
+`CASBACnetStack_x64_Release` in Release. The stack's DLL presets build only the
+Release configuration (`windows-x64-dll-release`, `linux-x64-release-shared`),
+and the stack ships exactly one Windows DLL, x64 Release - and this `.csproj`
+copies only the `_Release` library. So build and run this example in
 **Release**; a Debug build starts but fails to load the native library the
 first time it calls into the stack (see
-[Troubleshooting](TUTORIAL.md#troubleshooting)) unless you first add a
-`DebugDll` configuration to the stack's solution yourself.
+[Troubleshooting](TUTORIAL.md#troubleshooting)).
 
 ### Why `PropertyBufferHelper.cs` is here but unused
 
@@ -336,9 +350,9 @@ dotnet run -c Release -- --port 47821 --deviceID 12345
 Expected output:
 
 ```
-BACnet B-SS (Smart Sensor) Example - C# v1.1.0
+BACnet B-SS (Smart Sensor) Example - C# v1.2.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 1.1.0
+Common helper (common/) version: 1.2.0
 FYI: listening on <your-ip>:47808 (broadcast <your-subnet-broadcast>)
 FYI: Device 389001 ("Chipkin Example B-SS") ready. Vendor ID 389. Press 'h' for help.
 ```
@@ -352,6 +366,7 @@ through your firewall. To use a different port, pass `--port`.
 |--------|---------|---------|
 | `--port <n>` | `47808` | UDP port to listen on (BACnet/IP). |
 | `--deviceID <n>` | `389001` | The device's BACnet instance number (BACnet requires this to be configurable). |
+| `--deviceName <text>` | `Chipkin Example B-SS` | The Device object's `Object_Name`, 1..255 bytes, no control characters. It must be unique across the BACnet internetwork, so give every unit its own (BACnet requires it to be configurable, like the instance). An invalid value prints a warning and keeps the default. |
 | `--help`, `-h` | - | Show usage and exit. |
 | `--version` | - | Print the example and stack versions, then exit. |
 
@@ -405,13 +420,16 @@ For a property-by-property review against the conformance statement, see
 
 The checks above, automated: a Python BACnet client (the Peer) drives the running
 example over BACnet/IP from outside it. Python 3 standard library only. The
-scripts are the C++ edition's `tests/`, unchanged except for one addition in
+scripts are the C++ edition's `tests/`, with one addition in
 `tests/bss_setup.py`: `--exe` may be a whole command line (split with `shlex`),
-so the example can also be started as `dotnet <dll>`.
+so the example can also be started as `dotnet <dll>`. `configuration_test.py`
+starts the example through that, and its `--help` check names the options this
+port reads (it has no `--xml`).
 
 | Script | What it proves |
 |---|---|
 | `discovery_test.py` | Who-Is, the Device's `Object_List`, then for every object its `Property_List` and a ReadProperty of every property it lists - every read comes back as a value. |
+| `configuration_test.py` | The Device's identity is configurable at start-up: with `--deviceID 389901 --deviceName "Chipkin Example B-SS Unit 2"`, Who-Is, ReadProperty `Object_Name` and Who-Has by name all see the configured instance and name (and 389001 is gone); without them, the defaults; an empty or 256-byte name keeps the default with a warning, a 255-byte one is kept whole. `--help` lists exactly the options the example reads. |
 | `sensing_test.py` | **The Profile Function.** Reads the three sensors again and again for 12 s; the readings follow the Simulation (0.5 C steps, a toggle every 3 s, states in order). Fails against a sensor that serves constants. |
 | `failure_modes_test.py` | **The Failure Modes.** Breaks the simulated sensor wire: `Reliability` `open-loop`, `Status_Flags` FAULT, a frozen reading; repairs it: all clear, the reading moves. Then the errors for an unknown object / property / array index, and the Reject for a WriteProperty. |
 
@@ -423,9 +441,9 @@ python tests/run_wire_tests.py                     # default --exe bin/Release/n
 python tests/run_wire_tests.py --port 47821 --exe "dotnet bin/Release/net8.0/BACnetProfileExampleBSSCS.dll"
 ```
 
-It ends with `ALL WIRE TESTS PASSED` (exit 0); about 25 seconds.
+It ends with `ALL WIRE TESTS PASSED` (exit 0); about 35 seconds.
 [tests/README.md](tests/README.md) says what each check proves. **Verified on
-Windows only** (3 runs in a row, 36/36 checks each, no `[RETRY]` lines); the
+Windows only** (54/54 checks at 1.2.0, no `[RETRY]` lines); the
 port has not been run on Linux locally. CI (`.github/workflows/release.yml`) runs
 them on Linux after the smoke test.
 
@@ -556,4 +574,4 @@ Client-side profiles.
 - **Shared helper used by this example** - [`common/README.md`](common/README.md).
 
 See also [TUTORIAL.md](TUTORIAL.md), [docs/PICS.md](docs/PICS.md),
-[CHANGELOG.md](CHANGELOG.md), and [AGENTS.md](AGENTS.md).
+[CHANGELOG.md](CHANGELOG.md), [TODO.md](TODO.md) (known gaps), and [AGENTS.md](AGENTS.md).

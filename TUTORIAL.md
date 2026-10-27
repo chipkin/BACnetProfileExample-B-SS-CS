@@ -44,7 +44,9 @@ The Wire Test `tests/failure_modes_test.py` catches exactly that.
 **Change the device identity before you ship** - vendor ID, vendor name,
 model name, description, firmware revision and device name are all in the
 `CHANGE ALL OF THIS BEFORE YOU SHIP` block at the top of `Program.cs` §1, with
-a per-field note on each saying what to change it to. That block is the
+a per-field note on each saying what to change it to. The device name there is
+only the default: each unit takes its own with `--deviceName` at start-up, as
+it takes its instance with `--deviceID`. That block is the
 authoritative checklist; it is in the source rather than here so it cannot be
 skipped by someone who only reads the code. Keep the application-owned socket
 + `CASExampleHelper.RegisterCommonCallbacks()` shape, the habit of checking
@@ -292,7 +294,7 @@ defect, not a feature.
 | `ERROR: This example cannot run without the CAS BACnet Stack library.` (exit code 1) | The CAS BACnet Stack library (`CASBACnetStack_x64_Release.dll` / `libCASBACnetStack_x64_Release.so`) is not in the folder that holds the executable - the "Looked in" line names it. A release never includes it: it is a commercially licensed (paid) library from Chipkin (<https://store.chipkin.com/contact-us>). Licensed customers build it from the submodule (README.md [Build the native CAS BACnet Stack library](README.md#build-the-native-cas-bacnet-stack-library)) and put it next to the executable; a source build's `dotnet build -c Release` copies it there from `submodules/cas-bacnet-stack/bin/`. |
 | The same message followed by `Details: ...` | The library file is there but could not be loaded: the wrong architecture (this build is x64), a missing dependency, or a damaged file. The `Details` line is the runtime's reason. |
 | `DllNotFoundException: Unable to load DLL 'CASBACnetStack_x64_Release'` | The native library is missing from the build output directory. See README.md [Build the native CAS BACnet Stack library](README.md#build-the-native-cas-bacnet-stack-library) - it is a separate step from `dotnet build`: build it from the submodule into `submodules/cas-bacnet-stack/bin/`, then run `dotnet build -c Release` again, which copies it next to `BACnetProfileExampleBSSCS.dll`/`.exe`. |
-| `DllNotFoundException` mentioning `CASBACnetStack_x64_Debug` | You built/ran in `Debug` configuration. The stack's MSVC solution only ships a `ReleaseDll` configuration - see README.md [Why only a Release build](README.md#why-only-a-release-build). Build and run with `-c Release`. |
+| `DllNotFoundException` mentioning `CASBACnetStack_x64_Debug` | You built/ran in `Debug` configuration. The stack's CMake DLL presets build only the Release library (`CASBACnetStack_x64_Release`) - see README.md [Why only a Release build](README.md#why-only-a-release-build). Build and run with `-c Release`. |
 | `BadImageFormatException` | The native library's architecture does not match this process. This example targets `x64` (`<PlatformTarget>x64</PlatformTarget>`) - make sure the DLL/.so you built is also x64. |
 | `System.InvalidOperationException` from `Console.KeyAvailable` | Should not happen - `CASExampleHelper.PollKey()` checks `Console.IsInputRedirected` first and reads a redirected stdin on a background thread instead. If you see this after a local edit, you likely removed that check; see [Interactive keys are a simplification](#interactive-keys-are-a-simplification). |
 | Analog Input 1 `Reliability` reads `open-loop` and the reading is frozen | The test-only broken-wire hook is active: the environment variable `CAS_EXAMPLE_TEST_SENSOR_FAULT_FILE` names a file that exists. Unset the variable or delete the file. |

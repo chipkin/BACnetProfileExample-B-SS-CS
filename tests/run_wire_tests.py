@@ -21,7 +21,7 @@ import wiretest  # noqa: E402  (the vendored harness at the repository root)
 sys.path.insert(0, str(TESTS))
 import bss_setup  # noqa: E402  (this example's launch command)
 
-SCRIPTS = ["discovery_test.py", "sensing_test.py", "failure_modes_test.py"]
+SCRIPTS = ["discovery_test.py", "configuration_test.py", "sensing_test.py", "failure_modes_test.py"]
 
 
 def main():

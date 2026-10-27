@@ -14,7 +14,7 @@
 //   - SendIAm(): the unsolicited I-Am every example transmits on start-up.
 //   - GetLocalIPv4(): the primary interface's address/netmask/broadcast (the
 //     OS-level plumbing the Network Port object reports).
-//   - CLI helpers (--help/--version/--deviceID/--port) + PrintVersion().
+//   - CLI helpers (--help/--version/--deviceID/--deviceName/--port) + PrintVersion().
 //
 // The stack PULLS datagrams: its receive callback asks for one queued datagram
 // per call and the stack never touches the socket. The application (SimpleUDP)
@@ -51,7 +51,7 @@ namespace BACnetProfileExampleBSSCS.Common
         // The version of the vendored common/ helper itself (NOT the example's
         // version). Bump it whenever anything in common/ changes, and record the
         // change in common/CHANGELOG.md.
-        public const string COMMON_VERSION = "1.1.0";
+        public const string COMMON_VERSION = "1.2.0";
 
         // The delegate instances passed to BACnetStack_RegisterCallback* must be
         // kept alive for as long as the native stack may call them - a local
@@ -253,7 +253,7 @@ namespace BACnetProfileExampleBSSCS.Common
         }
 
         // ---------------------------------------------------------------------
-        // CLI helpers (--help / --version / --deviceID / --port)
+        // CLI helpers (--help / --version / --deviceID / --deviceName / --port)
         // ---------------------------------------------------------------------
 
         /// <summary>
@@ -376,7 +376,11 @@ namespace BACnetProfileExampleBSSCS.Common
         }
 
         /// <summary>Prints help/version and returns true if the caller should exit.</summary>
-        public static bool HandleHelpAndVersionArgs(string[] args, string appName, string appVersion)
+        /// <param name="showDeviceNameCliOption">true when the example reads --deviceName with
+        /// ParseDeviceNameArg() below, so the help lists it (added common/ 1.2.0; the default,
+        /// false, prints exactly what 1.1.0 printed).</param>
+        public static bool HandleHelpAndVersionArgs(string[] args, string appName, string appVersion,
+                                                    bool showDeviceNameCliOption = false)
         {
             foreach (string arg in args)
             {
@@ -388,6 +392,14 @@ namespace BACnetProfileExampleBSSCS.Common
                     Console.WriteLine("  --help              Show this help and exit");
                     Console.WriteLine("  --version           Show version information and exit");
                     Console.WriteLine("  --deviceID <inst>   BACnet Device instance (0..4194302)");
+                    if (showDeviceNameCliOption)
+                    {
+                        Console.WriteLine("  --deviceName <text> The Device object's Object_Name (1.." + MAX_DEVICE_NAME_LENGTH +
+                                          " bytes,");
+                        Console.WriteLine("                      no control characters). It must be unique across the");
+                        Console.WriteLine("                      BACnet internetwork, so give every unit its own.");
+                        Console.WriteLine("                      Default: this example's own name.");
+                    }
                     Console.WriteLine("  --port <udp>        BACnet/IP UDP port (default 47808)");
                     Console.WriteLine();
                     PrintInteractiveCommands();
@@ -432,6 +444,47 @@ namespace BACnetProfileExampleBSSCS.Common
         {
             // 4194303 is the BACnet "unconfigured" sentinel - a real device may not use it.
             return (uint)ParseNumberArg(args, "--deviceID", 0, 4194302, (int)fallback);
+        }
+
+        /// <summary>The longest Device Object_Name --deviceName accepts, in UTF-8 bytes.</summary>
+        public const int MAX_DEVICE_NAME_LENGTH = 255;
+
+        /// <summary>
+        /// The Device object's Object_Name to use: the value after "--deviceName" if present
+        /// and valid, else defaultDeviceName. Object_Name must be unique across the BACnet
+        /// internetwork (cl. 12.1.1.4 / 12.11), so two units that share a compile-time name are
+        /// non-conformant the moment both are installed; this makes it per-unit configurable at
+        /// start-up, the same way --deviceID makes the instance configurable. Valid = 1..
+        /// MAX_DEVICE_NAME_LENGTH bytes of UTF-8 and no control characters (a name must be
+        /// printable); anything else prints a warning and keeps the default. The same rules as
+        /// the C++ edition's ParseDeviceNameArg(). Added common/ 1.2.0.
+        /// </summary>
+        public static string ParseDeviceNameArg(string[] args, string defaultDeviceName)
+        {
+            for (int i = 0; i + 1 < args.Length; i++)
+            {
+                if (args[i] != "--deviceName")
+                {
+                    continue;
+                }
+                string name = args[i + 1];
+                int length = System.Text.Encoding.UTF8.GetByteCount(name);
+                bool printable = length > 0 && length <= MAX_DEVICE_NAME_LENGTH;
+                foreach (char character in name)
+                {
+                    if (character < 0x20 || character == 0x7F)
+                    {
+                        printable = false;
+                    }
+                }
+                if (printable)
+                {
+                    return name;
+                }
+                Console.WriteLine("Warning: ignoring invalid --deviceName (want 1.." + MAX_DEVICE_NAME_LENGTH +
+                    " bytes, no control characters); using \"" + defaultDeviceName + "\".");
+            }
+            return defaultDeviceName;
         }
     }
 }

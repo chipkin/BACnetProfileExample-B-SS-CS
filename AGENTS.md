@@ -69,11 +69,15 @@ dotnet build -c Release                   # compiles this example + the stack's 
 ```
 
 `dotnet build` does **not** build the native CAS BACnet Stack library the
-adapter P/Invokes into - that is a separate native C++ build (MSBuild on
-Windows against `submodules/cas-bacnet-stack/projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj`
-`/p:Configuration=ReleaseDll /p:Platform=x64` - a customer-interface build,
-never `DebugTestTool`; g++ on Linux). See README.md for the exact commands.
-The `.csproj` copies the built library from the submodule's `bin/` into the
+adapter P/Invokes into - that is a separate native C++ build with the stack's
+CMake, its only build (from `submodules/cas-bacnet-stack/`: `cmake --preset
+windows-x64-dll`, `cmake --build --preset windows-x64-dll-release`, `cmake
+--install build-windows-x64-dll --config Release` on Windows; the
+`linux-x64-release-shared` preset on Linux) - a customer-interface build,
+never the test-tool library. The stack no longer has `projects/msvs/` or
+`projects/linux/` (removed before `6.x` @ `29b83de6`). See README.md for the
+exact commands. `cmake --install` puts the library in the submodule's `bin/`;
+the `.csproj` copies it from there into the
 build output when it exists there. Do not try to fold that into the `.csproj` as a
 pre-build target unless you also make it a no-op when the DLL/.so is already
 present - re-running the native build on every `dotnet build` would make the
@@ -81,14 +85,14 @@ inner loop painfully slow.
 
 **Release only.** The adapter's DllImport filename is
 `CASBACnetStack_x64_Debug` under `#if DEBUG`, else `CASBACnetStack_x64_Release`;
-the stack's MSVC solution only has a `ReleaseDll` configuration. Build and run
+the stack's DLL presets build only Release. Build and run
 this example in Release. Do not "fix" this by adding a Debug DLL step here -
 that belongs in the stack submodule, not this example.
 
 ## Run
 
 ```bash
-dotnet run -c Release -- --port 47821 --deviceID 12345   # run
+dotnet run -c Release -- --port 47821 --deviceID 12345 [--deviceName "Chipkin Example B-SS"]   # run
 dotnet build -c Release                                   # compile-check (no separate typecheck step in .NET)
 ```
 

@@ -22,7 +22,7 @@ differs from the C++/Node editions.
 | File | What it is |
 |---|---|
 | `SimpleUDP.cs` | The UDP socket the application owns: bind, poll for inbound datagrams (`Socket.Available`, no background thread), send. The stack never touches the socket - it pulls datagrams through the receive callback. |
-| `CASExampleHelper.cs` | `RegisterCommonCallbacks()` (receive/send/system-time + the 6-byte IPv4 connection string, port big-endian, written here ONCE), `SendIAm()`, `GetLocalIPv4()`, CLI helpers, the version banner (`PrintVersion()`, with `COMMON_VERSION`), and `PollKey()` (h / q / up / down on a console; q / h on a redirected stdin). The send callback sends a length-0 connection string, or a broadcast addressed to this socket itself, to the local subnet broadcast. Currently **1.1.0**. |
+| `CASExampleHelper.cs` | `RegisterCommonCallbacks()` (receive/send/system-time + the 6-byte IPv4 connection string, port big-endian, written here ONCE), `SendIAm()`, `GetLocalIPv4()`, CLI helpers (`--help`, `--version`, `--deviceID`, `--deviceName` with `ParseDeviceNameArg()`, `--port`), the version banner (`PrintVersion()`, with `COMMON_VERSION`), and `PollKey()` (h / q / up / down on a console; q / h on a redirected stdin). The send callback sends a length-0 connection string, or a broadcast addressed to this socket itself, to the local subnet broadcast. Currently **1.2.0**. |
 | `CASBACnetStackExampleConstants.cs` | The handful of BACnet enumeration values this example needs that the vendored C# adapter does not already define itself - see the file's header comment for the full mapping against `CASBACnetStack.CASBACnetStackAdapter`'s own enumerations. |
 
 ## How Program.cs uses it

@@ -54,7 +54,8 @@
 // object that every BACnet device must have. Each object is given a colour name
 // (a convention shared across this example series):
 //
-//     Device 389001          "Chipkin Example B-SS"    (instance configurable with --deviceID)
+//     Device 389001          "Chipkin Example B-SS"    (instance configurable with --deviceID,
+//                                                       Object_Name with --deviceName)
 //     Analog Input  1        "Bronze"     (REAL, degrees Celsius; ramps 18.0 .. 26.0)
 //     Binary Input  1        "Emerald"    (active / inactive; toggles every 3 s)
 //     Multi-State Input 1    "Hot Pink"   (an enumerated state, 1..3; steps every 4 s)
@@ -71,7 +72,7 @@
 // Interactive keys (handled by the shared helper's console polling below):
 // h = help, q = quit, up/down = nudge the simulated Analog Input 1 reading by
 // +/-1.1. Command line:
-// --port <n>, --deviceID <n>.
+// --port <n>, --deviceID <n>, --deviceName <text>.
 //
 // All the UDP/stack plumbing lives in common/CASExampleHelper so this file can
 // stay focused on the BACnet logic.
@@ -91,7 +92,7 @@ namespace BACnetProfileExampleBSSCS
         // 1. Example + device configuration
         // -------------------------------------------------------------------
         private const string APP_NAME = "BACnet B-SS (Smart Sensor) Example - C#";
-        private const string APP_VERSION = "1.1.0";
+        private const string APP_VERSION = "1.2.0";
 
         // The device instance. BACnet requires this to be configurable, so it
         // defaults to 389001 and can be overridden on the command line with
@@ -114,17 +115,21 @@ namespace BACnetProfileExampleBSSCS
         // https://bacnet.org/assigned-vendor-ids/. Update VENDOR_NAME below to match.
         private const uint VENDOR_IDENTIFIER = 389;
 
-        // The Device object's Object_Name.
+        // The Device object's Object_Name - the DEFAULT one.
         //
         // THIS IS THE ONE THAT WILL BITE YOU. Object_Name must be unique across
-        // the whole BACnet internetwork, and here it is a COMPILE-TIME constant.
-        // The device instance is runtime-configurable via --deviceID, so it is
-        // easy to ship two units, configure their instances correctly, and still
-        // have BOTH announce Object_Name "Chipkin Example B-SS" - a spec violation, and a hard
-        // BTL failure. In a real product Object_Name must be per-unit
-        // configurable too: derive it from a serial number, DIP switches, a
-        // config file, or add a --deviceName argument.
+        // the whole BACnet internetwork (cl. 12.1.1.4), so it must be per-unit
+        // configurable, exactly like the instance. This example takes it at
+        // start-up with --deviceName <text> (common/ ParseDeviceNameArg, read
+        // into g_deviceName in Main()); DEVICE_NAME is only what a unit
+        // announces when nobody configured it. Ship two units without
+        // --deviceName and BOTH announce the same Object_Name - a spec
+        // violation, and a hard BTL failure. In your product, configure the name
+        // per unit (a serial number, DIP switches, a config file, or this
+        // argument) and change the default below to something that says "not
+        // configured yet".
         private const string DEVICE_NAME = "Chipkin Example B-SS";
+        private static string g_deviceName = DEVICE_NAME; // --deviceName, or the default
 
         // The Device object's Description. Change it to what YOUR device
         // actually is; this string describes this tutorial.
@@ -573,7 +578,7 @@ namespace BACnetProfileExampleBSSCS
             {
                 if (objectType == CASBACnetStackAdapter.OBJECT_TYPE_DEVICE && objectInstance == g_deviceInstance)
                 {
-                    return ReturnCharacterString(DEVICE_NAME, value, valueElementCount, maxElementCount, encodingType);
+                    return ReturnCharacterString(g_deviceName, value, valueElementCount, maxElementCount, encodingType);
                 }
                 if (objectType == CASBACnetStackAdapter.OBJECT_TYPE_ANALOG_INPUT && objectInstance == ANALOG_INPUT_INSTANCE)
                 {
@@ -669,12 +674,14 @@ namespace BACnetProfileExampleBSSCS
             // --- --help / --version ----------------------------------------------
             // These print and exit, and work without the native CAS BACnet Stack
             // library (PrintVersion() then says the stack version is not available).
-            if (CASExampleHelper.HandleHelpAndVersionArgs(args, APP_NAME, APP_VERSION))
+            if (CASExampleHelper.HandleHelpAndVersionArgs(args, APP_NAME, APP_VERSION,
+                                                          true)) // help lists --deviceName
             {
                 return 0;
             }
             ushort port = CASExampleHelper.ParsePortArg(args, 47808);
             g_deviceInstance = CASExampleHelper.ParseDeviceIdArg(args, g_deviceInstance);
+            g_deviceName = CASExampleHelper.ParseDeviceNameArg(args, DEVICE_NAME);
 
             // --- Is the CAS BACnet Stack library here? -----------------------------
             // Unlike the C++/Node editions there is no LoadBACnetFunctions() to
@@ -887,7 +894,7 @@ namespace BACnetProfileExampleBSSCS
                 return 1;
             }
 
-            Console.WriteLine("FYI: Device " + g_deviceInstance + " (\"" + DEVICE_NAME + "\") ready. Vendor ID " +
+            Console.WriteLine("FYI: Device " + g_deviceInstance + " (\"" + g_deviceName + "\") ready. Vendor ID " +
                 VENDOR_IDENTIFIER + ". Press 'h' for help.");
 
             // --- Graceful Ctrl+C shutdown ----------------------------------------

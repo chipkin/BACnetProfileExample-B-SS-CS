@@ -9,19 +9,20 @@
 
     Why Release only: the stack's C# adapter's DllImport filename is
     "CASBACnetStack_x64_Debug" under #if DEBUG, else "CASBACnetStack_x64_Release"
-    (see common's note in CASExampleHelper.cs and README.md). The stack's own
-    MSVC solution (submodules/cas-bacnet-stack/projects/msvs/BuildCASBACnetStack.sln)
-    only has a DynamicLibrary configuration named "ReleaseDll", which produces
-    exactly CASBACnetStack_x64_Release.dll - there is no matching Debug DLL
-    configuration. So this example is built and run in Release; a Debug build
-    will start but fail to load the native library until you either build a
-    ReleaseDll from the stack or add a DebugDll configuration to its solution.
+    (see common's note in CASExampleHelper.cs and README.md). The stack's only
+    build is CMake (submodules/cas-bacnet-stack/CMakePresets.json); its DLL
+    presets (windows-x64-dll-release, linux-x64-release-shared) build only the
+    Release library, CASBACnetStack_x64_Release.dll /
+    libCASBACnetStack_x64_Release.so, and the items below copy only those
+    names. So this example is built and run in Release; a Debug build will
+    start but fail to load the native library.
   -->
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>BACnetProfileExampleBSSCS</AssemblyName>
+    <Version>1.2.0</Version>
     <RootNamespace>BACnetProfileExampleBSSCS</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
@@ -58,7 +59,7 @@
   <ItemGroup>
     <!-- The native CAS BACnet Stack library the adapter P/Invokes, copied next to the build
          output when it has been built (README "Build the native CAS BACnet Stack library":
-         projects/msvs/CASBACnetStack/CASBACnetStack.vcxproj, ReleaseDll|x64, writes it to the
+         the stack's CMake DLL preset, then "cmake [double-dash]install build-<preset>", writes it to the
          submodule's bin/). Absent = nothing copied. The copy lands only in the gitignored
          build output (bin/); the stack binary is never committed or released. -->
     <None Include="submodules/cas-bacnet-stack/bin/CASBACnetStack_x64_Release.dll"
